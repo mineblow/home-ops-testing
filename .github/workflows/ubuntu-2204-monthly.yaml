@@ -1,0 +1,113 @@
+name: Monthly Proxmox Ubuntu Template Builder
+
+on:
+  schedule:
+    - cron: '0 5 1 * *'  # 1st of every month @ 5AM UTC
+  workflow_dispatch:
+
+jobs:
+  build-proxmox-template:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Required for OIDC → Vault login
+
+    steps:
+      - name: 📎 Checkout repo
+        uses: actions/checkout@v3
+
+      - name: 🔐 Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+
+      - name: 🧠 Extract Vault bootstrap from GCP
+        id: bootstrap
+        run: |
+          RAW=$(gcloud secrets versions access latest --secret=vault_bootstrap)
+          echo "$RAW" > vault.json
+
+          export VAULT_ADDR=$(jq -r .vault_addr vault.json)
+          export VAULT_ROLE=$(jq -r .vault_role vault.json)
+          export CLIENT_ID=$(jq -r .oauth_client_id vault.json)
+          export CLIENT_SECRET=$(jq -r .oauth_client_secret vault.json)
+
+          echo "::add-mask::$VAULT_ADDR"
+          echo "::add-mask::$CLIENT_ID"
+          echo "::add-mask::$CLIENT_SECRET"
+
+          echo "VAULT_ADDR=$VAULT_ADDR" >> "$GITHUB_ENV"
+          echo "VAULT_ROLE=$VAULT_ROLE" >> "$GITHUB_ENV"
+          echo "TAILSCALE_CLIENT_ID=$CLIENT_ID" >> "$GITHUB_ENV"
+          echo "TAILSCALE_CLIENT_SECRET=$CLIENT_SECRET" >> "$GITHUB_ENV"
+
+      - name: 🌐 Start Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ env.TAILSCALE_CLIENT_ID }}
+          oauth-secret: ${{ env.TAILSCALE_CLIENT_SECRET }}
+          hostname: template-runner
+          tags: tag:github-ci
+
+      - name: 🔐 Authenticate to Vault (OIDC)
+        id: vault-login
+        env:
+          VAULT_ADDR: ${{ env.VAULT_ADDR }}
+        run: |
+          set -euo pipefail
+
+          JWT=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+                      "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
+
+          RESPONSE=$(curl -s --request POST \
+            --data "{\"jwt\":\"$JWT\",\"role\":\"${VAULT_ROLE}\"}" \
+            "$VAULT_ADDR/v1/auth/jwt/login")
+
+          VAULT_TOKEN=$(echo "$RESPONSE" | jq -r .auth.client_token)
+
+          if [[ "$VAULT_TOKEN" == "null" || -z "$VAULT_TOKEN" ]]; then
+            echo "❌ Vault login failed. Check audience or role permissions."
+            echo "$RESPONSE" | jq
+            exit 1
+          fi
+
+          echo "::add-mask::$VAULT_TOKEN"
+          echo "VAULT_TOKEN=$VAULT_TOKEN" >> "$GITHUB_ENV"
+
+      - name: 🔑 Fetch and validate SSH key from Vault
+        env:
+          VAULT_ADDR: ${{ env.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          SECRET_PATH="kv/data/home-ops/proxmox/automation_ssh_key"
+          curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/$SECRET_PATH" \
+            | jq -r '.data.data.value' \
+            | awk 'BEGIN { RS="\\n" } { print }' > proxmox.key
+
+          chmod 600 proxmox.key
+
+          echo "🔐 Validating SSH key..."
+          ssh-keygen -y -f proxmox.key >/dev/null || {
+            echo "❌ SSH key is invalid. Exiting."
+            exit 1
+          }
+
+      - name: 📤 Copy script to Proxmox host
+        run: |
+          PROXMOX_HOST=proxmox.mineblow.me
+          scp -i proxmox.key -o StrictHostKeyChecking=no ./scripts/ubuntu-2204-template.sh \
+            auto@$PROXMOX_HOST:/home/auto/scripts/ubuntu-2204-template.sh
+
+          ssh -tt -i proxmox.key -o StrictHostKeyChecking=no auto@$PROXMOX_HOST \
+            "sudo -n chmod +x /home/auto/scripts/ubuntu-2204-template.sh"
+
+      - name: 🚀 Run Template Builder Script via SSH
+        run: |
+          ssh -tt -i proxmox.key -o StrictHostKeyChecking=no auto@proxmox.mineblow.me \
+            "sudo -n /home/auto/scripts/ubuntu-2204-template.sh"
+
+      - name: 🧹 Cleanup
+        if: always()
+        run: rm -f proxmox.key vault.json
