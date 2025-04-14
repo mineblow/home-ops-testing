@@ -1,0 +1,166 @@
+---
+name: 🏗️ Monthly Proxmox Template Builder
+
+on:
+  schedule:
+    - cron: '0 5 1 * *'  # 1st of every month @ 5AM UTC
+  workflow_dispatch:
+    inputs: {}
+
+jobs:
+  build-templates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Required for OIDC → Vault login
+
+    env:
+      PROXMOX_HOST: proxmox.mineblow.me
+
+    steps:
+      - name: 📎 Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 🔐 Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+
+      - name: 🧠 Extract Vault bootstrap from GCP
+        run: |
+          set -euo pipefail
+
+          RAW=$(gcloud secrets versions access latest --secret=vault_bootstrap)
+          echo "$RAW" > vault.json
+
+          REQUIRED_KEYS=(vault_addr vault_role oauth_client_id oauth_client_secret)
+          for key in "${REQUIRED_KEYS[@]}"; do
+            VALUE=$(jq -r ."$key" vault.json)
+            if [[ "$VALUE" == "null" || -z "$VALUE" ]]; then
+              echo "❌ Missing $key in vault.json"
+              exit 1
+            fi
+          done
+
+          export VAULT_ADDR=$(jq -r .vault_addr vault.json)
+          export VAULT_ROLE=$(jq -r .vault_role vault.json)
+          export CLIENT_ID=$(jq -r .oauth_client_id vault.json)
+          export CLIENT_SECRET=$(jq -r .oauth_client_secret vault.json)
+
+          echo "::add-mask::$VAULT_ADDR"
+          echo "::add-mask::$CLIENT_ID"
+          echo "::add-mask::$CLIENT_SECRET"
+
+          echo "VAULT_ADDR=$VAULT_ADDR" >> "$GITHUB_ENV"
+          echo "VAULT_ROLE=$VAULT_ROLE" >> "$GITHUB_ENV"
+          echo "TAILSCALE_CLIENT_ID=$CLIENT_ID" >> "$GITHUB_ENV"
+          echo "TAILSCALE_CLIENT_SECRET=$CLIENT_SECRET" >> "$GITHUB_ENV"
+
+      - name: 🌐 Start Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ env.TAILSCALE_CLIENT_ID }}
+          oauth-secret: ${{ env.TAILSCALE_CLIENT_SECRET }}
+          hostname: template-runner
+          tags: tag:github-ci
+
+      - name: 🌐 Wait for Tailscale to connect
+        run: |
+          for i in {1..5}; do
+            if tailscale status >/dev/null 2>&1; then
+              break
+            fi
+            echo "⏳ Waiting for Tailscale..."
+            sleep 5
+          done
+
+      - name: 🔓 Authenticate to Vault (OIDC)
+        run: |
+          set -euo pipefail
+
+          JWT=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+                      "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
+
+          RESPONSE=$(curl -s --request POST \
+            --data "{\"jwt\":\"$JWT\",\"role\":\"${VAULT_ROLE}\"}" \
+            "$VAULT_ADDR/v1/auth/jwt/login")
+
+          VAULT_TOKEN=$(echo "$RESPONSE" | jq -r .auth.client_token)
+
+          if [[ "$VAULT_TOKEN" == "null" || -z "$VAULT_TOKEN" ]]; then
+            echo "❌ Vault login failed"
+            echo "$RESPONSE"
+            exit 1
+          fi
+
+          echo "::add-mask::$VAULT_TOKEN"
+          echo "VAULT_TOKEN=$VAULT_TOKEN" >> "$GITHUB_ENV"
+
+      - name: 🔑 Fetch and validate SSH key from Vault
+        run: |
+          set -euo pipefail
+
+          SECRET_PATH="kv/data/home-ops/proxmox/automation_ssh_key"
+          curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/$SECRET_PATH" \
+            | jq -r '.data.data.value' > proxmox.key
+
+          chmod 600 proxmox.key
+          ssh-keygen -y -f proxmox.key >/dev/null
+
+      - name: 📤 Copy all builder scripts to Proxmox host
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          scripts=(.scripts/*template.sh)
+
+          if [[ ${#scripts[@]} -eq 0 ]]; then
+            echo "❌ No matching template scripts found in .scripts/"
+            exit 1
+          fi
+
+          for script in "${scripts[@]}"; do
+            echo "📤 Copying $script"
+            scp -i proxmox.key -o StrictHostKeyChecking=no "$script" auto@$PROXMOX_HOST:/home/auto/scripts/ || {
+              echo "❌ SCP failed for $script"
+              exit 1
+            }
+
+            ssh -o BatchMode=yes -i proxmox.key -o StrictHostKeyChecking=no auto@$PROXMOX_HOST \
+              "sudo -n chmod +x /home/auto/scripts/$(basename "$script")" || {
+                echo "❌ chmod failed for $script"
+                exit 1
+              }
+          done
+
+      - name: 🚀 Execute all builder scripts
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          scripts=(.scripts/*template.sh)
+
+          if [[ ${#scripts[@]} -eq 0 ]]; then
+            echo "❌ No matching template scripts found in .scripts/"
+            exit 1
+          fi
+
+          for script in "${scripts[@]}"; do
+            name=$(basename "$script")
+            echo "🚀 Running $name"
+            ssh -o BatchMode=yes -i proxmox.key -o StrictHostKeyChecking=no auto@$PROXMOX_HOST \
+              "set -euo pipefail; sudo -n /home/auto/scripts/$name" || {
+                echo "❌ $name failed"
+                exit 1
+              }
+          done
+
+      # - name: 📜 Save logs or metadata (optional)
+      #   if: always()
+      #   run: |
+      #     echo "📝 TODO: Save build logs or output JSON to Vault/GCS"
+
+      - name: 🧹 Cleanup
+        if: always()
+        run: |
+          rm -f proxmox.key vault.json
