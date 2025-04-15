@@ -24,16 +24,31 @@ jobs:
       - name: 🥦 Checkout repo
         uses: actions/checkout@v4
 
-      - name: 🔐 Auth to GCP & Fetch Vault Bootstrap
+      - name: 🔐 Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+
+      - name: 🧠 Extract Vault bootstrap from GCP
         run: |
-          echo "${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}" > gcp-creds.json
-          gcloud auth activate-service-account --key-file=gcp-creds.json
+          set -euo pipefail
 
           RAW=$(gcloud secrets versions access latest --secret=vault_bootstrap)
-          export VAULT_ADDR=$(echo "$RAW" | jq -r .vault_addr)
-          export VAULT_ROLE=$(echo "$RAW" | jq -r .vault_role)
-          export CLIENT_ID=$(echo "$RAW" | jq -r .oauth_client_id)
-          export CLIENT_SECRET=$(echo "$RAW" | jq -r .oauth_client_secret)
+          echo "$RAW" > vault.json
+
+          REQUIRED_KEYS=(vault_addr vault_role oauth_client_id oauth_client_secret)
+          for key in "${REQUIRED_KEYS[@]}"; do
+            VALUE=$(jq -r ."$key" vault.json)
+            if [[ "$VALUE" == "null" || -z "$VALUE" ]]; then
+              echo "❌ Missing $key in vault.json"
+              exit 1
+            fi
+          done
+
+          export VAULT_ADDR=$(jq -r .vault_addr vault.json)
+          export VAULT_ROLE=$(jq -r .vault_role vault.json)
+          export CLIENT_ID=$(jq -r .oauth_client_id vault.json)
+          export CLIENT_SECRET=$(jq -r .oauth_client_secret vault.json)
 
           echo "::add-mask::$VAULT_ADDR"
           echo "::add-mask::$CLIENT_ID"
