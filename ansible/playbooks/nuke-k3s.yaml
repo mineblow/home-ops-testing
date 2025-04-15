@@ -1,0 +1,50 @@
+---
+- name: Completely remove K3s from all nodes
+  hosts: all
+  become: true
+  tasks:
+
+    - name: Stop K3s service
+      ansible.builtin.systemd:
+        name: k3s
+        state: stopped
+      ignore_errors: true
+
+    - name: Disable K3s service
+      ansible.builtin.systemd:
+        name: k3s
+        enabled: false
+      ignore_errors: true
+
+    - name: Run the K3s uninstall script (if exists)
+      ansible.builtin.command: /usr/local/bin/k3s-uninstall.sh
+      args:
+        removes: /usr/local/bin/k3s-uninstall.sh
+      ignore_errors: true
+
+    - name: Remove K3s files and directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/rancher/k3s
+        - /var/lib/rancher/k3s
+        - /usr/local/bin/k3s
+        - /usr/local/bin/k3s-uninstall.sh
+        - /usr/local/bin/k3s-killall.sh
+        - /etc/systemd/system/k3s.service
+
+    - name: Flush iptables
+      ansible.builtin.command: iptables --flush
+      ignore_errors: true
+
+    - name: Remove CNI network interfaces
+      ansible.builtin.command: ip link delete {{ item }}
+      loop:
+        - cni0
+        - flannel.1
+      ignore_errors: true
+
+    - name: Reboot the node
+      ansible.builtin.reboot:
+        msg: "Rebooting after K3s removal"

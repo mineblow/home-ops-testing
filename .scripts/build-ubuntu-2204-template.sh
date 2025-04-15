@@ -4,8 +4,8 @@ set -euo pipefail
 # ─────────────────────────────────────────
 # ⚙️ CONFIGURATION
 # ─────────────────────────────────────────
-VMID_START=9010
-VMID_END=9015
+VMID_START=9000
+VMID_END=9005
 MAX_TEMPLATES=5
 TEMPLATE_PREFIX="ubuntu-22.04-cloudinit"
 ISO_URL="https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"

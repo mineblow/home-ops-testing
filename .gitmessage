@@ -1,0 +1,35 @@
+# 🧠 Conventional Commit Message Template
+#
+# Format:
+#   <type>(<scope>): <short summary>
+#
+# Example:
+#   feat(terraform): add VM tagging support
+#
+# Allowed types and meanings:
+
+# 🔨 feat – A new feature for the codebase (adds functionality)
+#     Example: feat(ci): add GitHub Actions for auto-build
+#
+# 🐛 fix – A bug fix that corrects broken behavior
+#     Example: fix(terraform): correct subnet cidr in network module
+#
+# 🧹 chore – Routine tasks, housekeeping, tooling changes (no user impact)
+#     Example: chore(deps): bump yamllint to v1.32.0
+#
+# 🚀 ci – Changes to CI/CD configs or automation
+#     Example: ci(github): add GCP auth to monthly workflow
+#
+# 📘 docs – Documentation-only changes
+#     Example: docs(k8s): update deployment README with example values
+#
+# 💅 style – Code formatting, whitespace, semicolons, etc. (no logic change)
+#     Example: style(python): apply black formatter
+#
+# 🔁 refactor – Code change that neither fixes a bug nor adds a feature
+#     Example: refactor(terraform): simplify cloud-init generation logic
+
+# Optional scopes:
+#   terraform, k8s, github, docker, ceph, argo, vault, ansible, ci, monitoring, utils, deps, etc.
+
+# Commit your changes below this line:

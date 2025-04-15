@@ -1,0 +1,49 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Terraform: Format All",
+      "type": "shell",
+      "command": "terraform fmt -recursive",
+      "group": "build"
+    },
+    {
+      "label": "Terraform: Validate Current",
+      "type": "shell",
+      "command": "terraform validate",
+      "group": "test"
+    },
+    {
+      "label": "YAML: Lint All",
+      "type": "shell",
+      "command": "yamllint .",
+      "group": "test"
+    },
+    {
+      "label": "Python: Lint Current File",
+      "type": "shell",
+      "command": "flake8 ${file}",
+      "group": "test"
+    },
+    {
+      "label": "Shell: Lint Current File",
+      "type": "shell",
+      "command": "shellcheck ${file}",
+      "group": "test"
+    },
+    {
+      "label": "Ansible: Lint",
+      "type": "shell",
+      "command": "ansible-lint ansible/",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Make: Build",
+      "type": "shell",
+      "command": "make",
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

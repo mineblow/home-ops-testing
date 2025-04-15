@@ -4,8 +4,8 @@ set -euo pipefail
 # ─────────────────────────────────────────
 # ⚙️ CONFIGURATION
 # ─────────────────────────────────────────
-VMID_START=9000
-VMID_END=9005
+VMID_START=9010
+VMID_END=9015
 MAX_TEMPLATES=5
 TEMPLATE_PREFIX="ubuntu-24.04-cloudinit"
 ISO_URL="https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"

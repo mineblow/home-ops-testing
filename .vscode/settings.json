@@ -1,0 +1,76 @@
+{
+  "editor.formatOnSave": true,
+  "editor.detectIndentation": false,
+  "editor.tabSize": 2,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": true,
+    "source.fixAll": true
+  },
+
+  "files.associations": {
+    "*.yml": "yaml",
+    "*.yaml": "yaml",
+    "*.tf": "terraform",
+    "*.tfvars": "terraform",
+    "*.j2": "yaml",
+    "Makefile": "makefile",
+    "*.sh": "shellscript"
+  },
+
+  "yaml.schemas": {
+    "https://json.schemastore.org/kubernetes.json": "/*.yaml",
+    "https://raw.githubusercontent.com/argoproj/argo-workflows/master/api/jsonschema/schema.json": "argo*.yaml",
+    "https://json.schemastore.org/github-workflow.json": "**/.github/workflows/*.{yml,yaml}"
+  },
+
+  // 🔇 GitHub Actions schema spam
+  "github-actions.validate.secrets": false,
+  "github-actions.validate.env": false,
+
+  // 🧹 Hide VS Code's own extensions from search/lint/indexing
+  "files.exclude": {
+    "**/.vscode-server/extensions/**": true,
+    "**/.vscode-server/cli/servers/**": true
+  },
+  "search.exclude": {
+    "**/.vscode-server/extensions/**": true,
+    "**/.vscode-server/cli/servers/**": true
+  },
+  "files.watcherExclude": {
+    "**/.vscode-server/extensions/**": true,
+    "**/.vscode-server/cli/servers/**": true
+  },
+
+  // 🔇 Disable package.json & JSONC validation in extensions
+  "json.schemaDownload.enable": false,
+  "json.validate.enable": true,
+
+  "[json]": {
+    "editor.quickSuggestions": false,
+    "editor.validate": false,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.quickSuggestions": false,
+    "editor.validate": false
+  },
+
+  "[terraform]": {
+    "editor.defaultFormatter": "hashicorp.terraform"
+  },
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter"
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+  "[markdown]": {
+    "editor.wordWrap": "on"
+  },
+
+  "terminal.integrated.defaultProfile.windows": "WSL",
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "git.enableSmartCommit": true,
+  "prettier.requireConfig": true,
+  "terraform.formatOnSave": true
+}

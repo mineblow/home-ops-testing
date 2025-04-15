@@ -1,0 +1,28 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+packages:
+  - nano
+  - curl
+  - wget
+  - qemu-guest-agent
+  - ca-certificates
+  - lsb-release
+  - gnupg
+  - net-tools
+  - htop
+
+users:
+  - name: ${username}
+    ssh_authorized_keys:
+      - ${ssh_key}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    shell: /bin/bash
+
+disable_root: true
+ssh_pwauth: false
+
+runcmd:
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent

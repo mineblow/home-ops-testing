@@ -1,0 +1,21 @@
+{
+  "recommendations": [
+    "esbenp.prettier-vscode",
+    "ms-azuretools.vscode-docker",
+    "redhat.vscode-yaml",
+    "ms-kubernetes-tools.vscode-kubernetes-tools",
+    "bierner.markdown-mermaid",
+    "ms-python.black-formatter",
+    "foxundermoon.shell-format",
+    "timonwong.shellcheck",
+    "github.copilot",
+    "github.copilot-chat",
+    "github.vscode-pull-request-github",
+    "ms-python.debugpy",
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-vscode.makefile-tools",
+    "gruntfuggly.todo-tree",
+    "github.vscode-github-actions"
+  ]
+}

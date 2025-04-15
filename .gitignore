@@ -1,0 +1,27 @@
+# Trash
+.DS_Store
+Thumbs.db
+# k8s
+kubeconfig
+# vscode-sops
+.decrypted~*.yaml
+*.envrc
+*.agekey
+*.pub
+*.key
+*.env
+# Ansible
+xanmanning.k3s*
+hosts.yaml
+all.yaml
+# Terraform
+.terraform
+.terraform.tfstate*
+*.tfvars
+terraform.tfstate*
+.idea
+*.lock.hcl
+
+# Ignore global cache directories
+.cache/
+../.cache/

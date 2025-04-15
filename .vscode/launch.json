@@ -1,0 +1,72 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "🐍 Python: Current File",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "🔐 Vault Injector: inject_created_at.py",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/python/inject_created_at.py",
+      "args": ["terraform/environments/homelab/bootstrap-runner/terraform.auto.tfvars"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "🐚 Bash: Run Script",
+      "type": "bashdb",
+      "request": "launch",
+      "program": "${file}",
+      "terminalKind": "integrated"
+    },
+    {
+      "name": "🌍 Terraform: Plan",
+      "type": "process",
+      "request": "launch",
+      "command": "terraform",
+      "args": ["plan"],
+      "cwd": "${workspaceFolder}/terraform/environments/homelab/bootstrap-runner",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "🌍 Terraform: Apply",
+      "type": "process",
+      "request": "launch",
+      "command": "terraform",
+      "args": ["apply", "-auto-approve"],
+      "cwd": "${workspaceFolder}/terraform/environments/homelab/bootstrap-runner",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "📦 Ansible: Run Playbook",
+      "type": "process",
+      "request": "launch",
+      "command": "ansible-playbook",
+      "args": ["-i", "inventory.yml", "site.yml"],
+      "cwd": "${workspaceFolder}/ansible",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "📁 Makefile: Run Default Target",
+      "type": "process",
+      "request": "launch",
+      "command": "make",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "🚀 ArgoCD: Sync App",
+      "type": "process",
+      "request": "launch",
+      "command": "argocd",
+      "args": ["app", "sync", "home-ops", "--prune", "--auto-prune", "--refresh"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ]
+}

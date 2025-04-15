@@ -1,0 +1,240 @@
+name: 🔐 Secure Tofu Apply on Label (Owner-Gated)
+
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  terraform-apply:
+    if: |
+      github.event.label.name == 'apply-infra' &&
+      github.actor == 'mineblow'
+    runs-on: [self-hosted, linux, runner]
+    environment:
+      name: production
+    timeout-minutes: 45
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+
+    steps:
+      - name: 🥦 Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 🧠 Detect Terraform Environment from PR
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+
+            const headSha = pr.data.head.sha;
+            const envMatch = pr.data.head.ref.match(/homelab\/(.+)/);
+            const envName = envMatch ? envMatch[1] : null;
+
+            if (!envName) {
+              core.setFailed("❌ Could not detect environment name.");
+            }
+
+            core.setOutput("env_name", envName);
+            core.setOutput("sha", headSha);
+
+      - name: 🔐 Auth to GCP & Fetch Vault Bootstrap
+        run: |
+          echo "${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}" > gcp-creds.json
+          gcloud auth activate-service-account --key-file=gcp-creds.json
+
+          RAW=$(gcloud secrets versions access latest --secret=vault_bootstrap)
+          export VAULT_ADDR=$(echo "$RAW" | jq -r .vault_addr)
+          export VAULT_ROLE=$(echo "$RAW" | jq -r .vault_role)
+          export CLIENT_ID=$(echo "$RAW" | jq -r .oauth_client_id)
+          export CLIENT_SECRET=$(echo "$RAW" | jq -r .oauth_client_secret)
+
+          echo "::add-mask::$VAULT_ADDR"
+          echo "::add-mask::$CLIENT_ID"
+          echo "::add-mask::$CLIENT_SECRET"
+
+          echo "VAULT_ADDR=$VAULT_ADDR" >> "$GITHUB_ENV"
+          echo "VAULT_ROLE=$VAULT_ROLE" >> "$GITHUB_ENV"
+          echo "TAILSCALE_CLIENT_ID=$CLIENT_ID" >> "$GITHUB_ENV"
+          echo "TAILSCALE_CLIENT_SECRET=$CLIENT_SECRET" >> "$GITHUB_ENV"
+
+      - name: 🌐 Start Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ env.TAILSCALE_CLIENT_ID }}
+          oauth-secret: ${{ env.TAILSCALE_CLIENT_SECRET }}
+          hostname: github-apply
+          tags: tag:github-ci
+
+      - name: 🔓 Authenticate to Vault
+        run: |
+          JWT=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
+
+          VAULT_TOKEN=$(curl -s --request POST \
+            --data "{\"jwt\":\"$JWT\",\"role\":\"${VAULT_ROLE}\"}" \
+            "$VAULT_ADDR/v1/auth/jwt/login" | jq -r .auth.client_token)
+
+          echo "::add-mask::$VAULT_TOKEN"
+          echo "VAULT_TOKEN=$VAULT_TOKEN" >> $GITHUB_ENV
+
+      - name: 🔐 Fetch secrets & write config
+        run: |
+          set -euo pipefail
+          ENV_DIR="${{ steps.pr.outputs.env_name }}"
+          > vault.auto.tfvars
+          > backend-consul.hcl
+
+          retry_curl() {
+            local try=3 n=0
+            until curl -s "$@" > /tmp/vault.tmp; do
+              if (( n >= try )); then echo "❌ Curl failed: $*" >&2; return 1; fi
+              ((n++)); echo "⏳ Retry $n/$try"; sleep 2
+            done
+            cat /tmp/vault.tmp
+          }
+
+          declare -A PROXMOX=(
+            ["proxmox_api_url"]="api_url"
+            ["proxmox_api_token"]="automation_full_token"
+          )
+          for VAR in "${!PROXMOX[@]}"; do
+            VAL=$(retry_curl -H "X-Vault-Token: $VAULT_TOKEN" \
+              "$VAULT_ADDR/v1/kv/data/home-ops/proxmox/${PROXMOX[$VAR]}" \
+              | jq -r '.data.data.value // empty')
+            echo "$VAR = \"$VAL\"" >> vault.auto.tfvars
+          done
+
+          LOCK_PATH=$(retry_curl -H "X-Vault-Token: $VAULT_TOKEN" \
+            "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_DIR/consul/state_locking_path" \
+            | jq -r '.data.data.value // empty')
+
+          LOCK_TOKEN=$(retry_curl -H "X-Vault-Token: $VAULT_TOKEN" \
+            "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_DIR/consul/state_locking_token" \
+            | jq -r '.data.data.value // empty')
+
+          CONSUL_DOMAIN=$(retry_curl -H "X-Vault-Token: $VAULT_TOKEN" \
+            "$VAULT_ADDR/v1/kv/data/home-ops/consul/domain" \
+            | jq -r '.data.data.value // empty' | sed 's:/*$::')
+
+          echo "address = \"$CONSUL_DOMAIN\"" > backend-consul.hcl
+          echo "path    = \"$LOCK_PATH\"" >> backend-consul.hcl
+
+          export CONSUL_HTTP_ADDR="$CONSUL_DOMAIN"
+          export CONSUL_HTTP_TOKEN="$LOCK_TOKEN"
+
+          SSH_KEY=$(retry_curl -H "X-Vault-Token: $VAULT_TOKEN" \
+            "$VAULT_ADDR/v1/kv/data/home-ops/proxmox/automation_ssh_key" \
+            | jq -r '.data.data.value // empty')
+
+          TMP_SSH_KEY=$(mktemp)
+          echo "$SSH_KEY" > "$TMP_SSH_KEY"
+          chmod 600 "$TMP_SSH_KEY"
+          eval "$(ssh-agent -s)" > /dev/null
+          ssh-add "$TMP_SSH_KEY"
+
+          echo "::add-mask::$TMP_SSH_KEY"
+
+          echo "proxmox_ssh_user = \"auto\"" >> vault.auto.tfvars
+          echo "proxmox_ssh_private_key = \"$TMP_SSH_KEY\"" >> vault.auto.tfvars
+
+      - name: 📦 Tofu Init
+        working-directory: terraform/environments/homelab/${{ steps.pr.outputs.env_name }}
+        run: |
+          retry() {
+            local try=3 n=0
+            until tofu init -backend-config=../../backend-consul.hcl -reconfigure; do
+              if (( n >= try )); then echo "❌ tofu init failed"; exit 1; fi
+              ((n++)); echo "⏳ Retry $n/$try"; sleep 2
+            done
+          }
+          retry
+
+      - name: 📅 Load tfplan from Consul and apply
+        run: |
+          set -euo pipefail
+          ENV="${{ steps.pr.outputs.env_name }}"
+          SHA="${{ steps.pr.outputs.sha }}"
+          PLAN_ENV="staging"
+
+          PLAN_JSON=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
+            "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV/plans/$PLAN_ENV" \
+            | jq -r '.data.data')
+
+          PLAN_COMMIT=$(echo "$PLAN_JSON" | jq -r '.commit')
+          PLAN_B64=$(echo "$PLAN_JSON" | jq -r '.plan')
+          PLAN_HASH_EXPECTED=$(echo "$PLAN_JSON" | jq -r '.hash')
+
+          if [[ "$PLAN_COMMIT" != "$SHA" ]]; then
+            echo "❌ Plan commit $PLAN_COMMIT does not match PR commit $SHA"
+            exit 1
+          fi
+
+          echo "$PLAN_B64" | base64 -d > tfplan
+          ACTUAL_HASH=$(sha256sum tfplan | awk '{print $1}')
+
+          if [[ "$PLAN_HASH_EXPECTED" != "$ACTUAL_HASH" ]]; then
+            echo "❌ Plan hash mismatch"
+            exit 1
+          fi
+
+          tofu apply tfplan || {
+            echo "❌ Tofu apply failed"
+            gh pr comment ${{ github.event.pull_request.number }} --body "❌ Terraform apply failed. Check logs for details."
+            exit 1
+          }
+
+      - name: 🧠 Push metadata to Consul
+        run: ./scripts/push-metadata.sh ${{ steps.pr.outputs.env_name }}
+
+      - name: 🔥 Delete Vault Plan After Successful Apply
+        if: success()
+        run: |
+          ENV="${{ steps.pr.outputs.env_name }}"
+          PLAN_ENV="staging"
+
+          echo "🧨 Deleting plan from Vault for $ENV..."
+          curl -s --request DELETE \
+            --header "X-Vault-Token: $VAULT_TOKEN" \
+            "$VAULT_ADDR/v1/kv/metadata/home-ops/opentofu/homelab/$ENV/plans/$PLAN_ENV"
+
+          echo "✅ Plan deleted from Vault"
+
+      - name: 🌏 Label PR as applied, comment, and close
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              labels: ['✅ applied']
+            });
+
+            await github.rest.issues.createComment({
+              issue_number: context.payload.pull_request.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ Infra applied at commit: ${{ steps.pr.outputs.sha }}`
+            });
+
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              state: 'closed'
+            });
+
+      - name: 🧹 Cleanup
+        if: always()
+        run: |
+          pkill -f ssh-agent || true
+          rm -f tfplan vault.auto.tfvars backend-consul.hcl /tmp/tmp.* || true

@@ -1,0 +1,221 @@
+name: 🧪 Secure Dynamic Tofu Plan
+
+on:
+  pull_request:
+    paths:
+      - 'terraform/environments/**'
+      - '.github/workflows/plan.yaml'
+      - '.secrets/backend.hcl.tpl'
+  workflow_dispatch:
+
+jobs:
+  terraform-plan:
+    runs-on: [self-hosted, linux, runner]
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: 🥦 Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 🧠 Detect Terraform Environment
+        id: detect
+        run: |
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
+          echo "env_path=" >> $GITHUB_OUTPUT
+          for FILE in $CHANGED_FILES; do
+            if [[ "$FILE" =~ ^terraform/environments/homelab/([^/]+)/ ]]; then
+              ENV_NAME="${BASH_REMATCH[1]}"
+              echo "env_path=terraform/environments/homelab/${ENV_NAME}" >> $GITHUB_OUTPUT
+              echo "env_name=${ENV_NAME}" >> $GITHUB_ENV
+              echo "should_skip=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          done
+
+          echo "should_skip=true" >> $GITHUB_OUTPUT
+
+      - name: 🚫 Skip if no Terraform changes
+        if: steps.detect.outputs.should_skip == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: "✅ No Terraform environment changes detected. Plan skipped."
+            });
+
+            core.setOutput("skipped", true)
+            return
+
+      - name: 🔐 Auth to GCP & Fetch Vault Bootstrap
+        if: steps.detect.outputs.should_skip != 'true'
+        run: |
+          echo "${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}" > gcp-creds.json
+          gcloud auth activate-service-account --key-file=gcp-creds.json
+
+          RAW=$(gcloud secrets versions access latest --secret=vault_bootstrap)
+          export VAULT_ADDR=$(echo "$RAW" | jq -r .vault_addr)
+          export VAULT_ROLE=$(echo "$RAW" | jq -r .vault_role)
+          export CLIENT_ID=$(echo "$RAW" | jq -r .oauth_client_id)
+          export CLIENT_SECRET=$(echo "$RAW" | jq -r .oauth_client_secret)
+
+          echo "::add-mask::$VAULT_ADDR"
+          echo "::add-mask::$CLIENT_ID"
+          echo "::add-mask::$CLIENT_SECRET"
+
+          echo "VAULT_ADDR=$VAULT_ADDR" >> "$GITHUB_ENV"
+          echo "VAULT_ROLE=$VAULT_ROLE" >> "$GITHUB_ENV"
+          echo "TAILSCALE_CLIENT_ID=$CLIENT_ID" >> "$GITHUB_ENV"
+          echo "TAILSCALE_CLIENT_SECRET=$CLIENT_SECRET" >> "$GITHUB_ENV"
+
+      - name: 🌐 Start Tailscale
+        if: steps.detect.outputs.should_skip != 'true'
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ env.TAILSCALE_CLIENT_ID }}
+          oauth-secret: ${{ env.TAILSCALE_CLIENT_SECRET }}
+          hostname: github-plan
+          tags: tag:github-ci
+
+      - name: 🔓 Authenticate to Vault
+        if: steps.detect.outputs.should_skip != 'true'
+        run: |
+          JWT=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
+
+          VAULT_TOKEN=$(curl -s --request POST \
+            --data "{\"jwt\":\"$JWT\",\"role\":\"${VAULT_ROLE}\"}" \
+            "$VAULT_ADDR/v1/auth/jwt/login" | jq -r .auth.client_token)
+
+          echo "::add-mask::$VAULT_TOKEN"
+          echo "VAULT_TOKEN=$VAULT_TOKEN" >> $GITHUB_ENV
+
+      - name: 🔐 Fetch secrets & write config
+        if: steps.detect.outputs.should_skip != 'true'
+        run: |
+          set -euo pipefail
+          ENV_DIR="${{ env.env_name }}"
+          > vault.auto.tfvars
+          > backend-consul.hcl
+
+          retry_curl() {
+            local try=3 n=0
+            until curl -s "$@" > /tmp/vault.tmp; do
+              if (( n >= try )); then echo "❌ Curl failed: $*" >&2; return 1; fi
+              ((n++)); echo "⏳ Retry $n/$try"; sleep 2
+            done
+            cat /tmp/vault.tmp
+          }
+
+          declare -A PROXMOX=(
+            ["proxmox_api_url"]="api_url"
+            ["proxmox_api_token"]="automation_full_token"
+          )
+          for VAR in "${!PROXMOX[@]}"; do
+            VAL=$(retry_curl -H "X-Vault-Token: $VAULT_TOKEN" \
+              "$VAULT_ADDR/v1/kv/data/home-ops/proxmox/${PROXMOX[$VAR]}" \
+              | jq -r '.data.data.value // empty')
+            echo "$VAR = \"$VAL\"" >> vault.auto.tfvars
+          done
+
+          LOCK_PATH=$(retry_curl -H "X-Vault-Token: $VAULT_TOKEN" \
+            "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_DIR/consul/state_locking_path" \
+            | jq -r '.data.data.value // empty')
+
+          LOCK_TOKEN=$(retry_curl -H "X-Vault-Token: $VAULT_TOKEN" \
+            "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_DIR/consul/state_locking_token" \
+            | jq -r '.data.data.value // empty')
+
+          CONSUL_DOMAIN=$(retry_curl -H "X-Vault-Token: $VAULT_TOKEN" \
+            "$VAULT_ADDR/v1/kv/data/home-ops/consul/domain" \
+            | jq -r '.data.data.value // empty' | sed 's:/*$::')
+
+          echo "address = \"$CONSUL_DOMAIN\"" > backend-consul.hcl
+          echo "path    = \"$LOCK_PATH\"" >> backend-consul.hcl
+
+          export CONSUL_HTTP_ADDR="$CONSUL_DOMAIN"
+          export CONSUL_HTTP_TOKEN="$LOCK_TOKEN"
+
+      - name: 📦 Tofu Init
+        if: steps.detect.outputs.should_skip != 'true'
+        working-directory: ${{ steps.detect.outputs.env_path }}
+        run: |
+          retry() {
+            local try=3 n=0
+            until tofu init -backend-config=../../backend-consul.hcl -reconfigure; do
+              if (( n >= try )); then echo "❌ tofu init failed"; exit 1; fi
+              ((n++)); echo "⏳ Retry $n/$try"; sleep 2
+            done
+          }
+          retry
+
+      - name: 🧊 Tofu Plan
+        if: steps.detect.outputs.should_skip != 'true'
+        working-directory: ${{ steps.detect.outputs.env_path }}
+        run: tofu plan -no-color -out=tfplan
+
+      - name: 💾 Save tfplan to Consul
+        if: steps.detect.outputs.should_skip != 'true'
+        run: |
+          ENV="${{ env.env_name }}"
+          SHA="${{ github.sha }}"
+          CREATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          PLAN_ENV="staging"
+          PLAN_B64=$(base64 -w 0 "${{ steps.detect.outputs.env_path }}/tfplan")
+          PLAN_HASH=$(sha256sum "${{ steps.detect.outputs.env_path }}/tfplan" | awk '{print $1}')
+
+          JSON=$(jq -n \
+            --arg plan "$PLAN_B64" \
+            --arg commit "$SHA" \
+            --arg hash "$PLAN_HASH" \
+            --arg created_at "$CREATED_AT" \
+            '{plan: $plan, commit: $commit, hash: $hash, created_at: $created_at}')
+
+          curl -s --request PUT \
+            --header "X-Vault-Token: $VAULT_TOKEN" \
+            --data "{\"data\": $JSON}" \
+            "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV/plans/$PLAN_ENV"
+
+      - name: 📊 Comment plan on PR
+        if: steps.detect.outputs.should_skip != 'true'
+        uses: actions/github-script@v7
+        env:
+          ENV_PATH: ${{ steps.detect.outputs.env_path }}
+          ENV_NAME: ${{ env.env_name }}
+          GITHUB_SHA: ${{ github.sha }}
+        with:
+          script: |
+            const vaultPath = `kv/home-ops/opentofu/homelab/${process.env.ENV_NAME}/plans/staging`;
+            const comment = [
+              `### 🧊 Terraform Plan for \`${process.env.ENV_NAME}\``,
+              ``,
+              `📦 Plan is securely stored in **Vault** at:`,
+              `\`${vaultPath}\``,
+              ``,
+              `🧾 To view the plan locally:`,
+              '```bash',
+              `vault kv get -field=plan ${vaultPath} | base64 -d | less`,
+              '```',
+              ``,
+              `✅ Commit: \`${process.env.GITHUB_SHA}\``,
+              `🕓 Created: \`${new Date().toISOString()}\``
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: 🧹 Cleanup
+        if: always()
+        run: |
+          rm -f backend-consul.hcl vault.auto.tfvars tfplan /tmp/tmp.* || true

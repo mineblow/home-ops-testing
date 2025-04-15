@@ -1,0 +1,112 @@
+repos:
+#   # 🔐 Vault + Custom Local Hooks
+#   - repo: local
+#     hooks:
+#       # - id: inject-and-push-tfvars
+#       #   name: 🔐 Inject + Push terraform.auto.tfvars to Vault
+#       #   entry: python3 python/inject_created_at.py
+#       #   language: python
+#       #   additional_dependencies: [python-hcl2, python-dotenv, requests]
+#       #   pass_filenames: false
+#       #   always_run: true
+#       #   verbose: true
+
+#       - id: check-kustomize
+#         name: 🧱 Validate kustomize configs
+#         entry: kustomize build
+#         language: system
+#         files: kustomization.yaml
+
+#       - id: conventional-commits
+#         name: 🔐 Enforce Conventional Commits
+#         entry: bash .hooks/check-commit-msg.sh
+#         language: system
+#         stages: [commit-msg]
+
+#   # 📄 YAML & Generic Checks
+#   - repo: https://github.com/pre-commit/pre-commit-hooks
+#     rev: v5.0.0
+#     hooks:
+#       - id: trailing-whitespace
+#       - id: end-of-file-fixer
+#       - id: check-yaml
+#       - id: check-added-large-files
+# #      - id: no-commit-to-branch
+# #        args: ["--branch", "main"]
+
+#   - repo: https://github.com/adrienverge/yamllint
+#     rev: v1.37.0
+#     hooks:
+#       - id: yamllint
+#         files: \.(yaml|yml)$
+#         types: [file]  # ✅ ensures .yaml files are properly caught
+#         args:
+#           - -d
+#           - |
+#             extends: default
+#             rules:
+#               line-length:
+#                 max: 120
+
+#   # 🐍 Python
+#   - repo: https://github.com/psf/black
+#     rev: 25.1.0
+#     hooks:
+#       - id: black
+#         language_version: python3
+
+#   - repo: https://github.com/astral-sh/ruff-pre-commit
+#     rev: v0.11.5
+#     hooks:
+#       - id: ruff
+#         args: [--fix]
+
+#   # 🐚 Shell
+#   - repo: https://github.com/koalaman/shellcheck-precommit
+#     rev: v0.10.0
+#     hooks:
+#       - id: shellcheck
+
+#   # 🌍 Terraform
+#   - repo: https://github.com/antonbabenko/pre-commit-terraform
+#     rev: v1.99.0
+#     hooks:
+#       - id: terraform_fmt
+#       - id: terraform_validate
+#       - id: terraform_tflint
+#       - id: terraform_docs
+
+#   # 🐳 Docker
+#   - repo: https://github.com/hadolint/hadolint
+#     rev: v2.13.1-beta
+#     hooks:
+#       - id: hadolint
+
+#   # ☸️ Kubernetes
+#   - repo: https://github.com/stackrox/kube-linter
+#     rev: v0.7.2
+#     hooks:
+#       - id: kube-linter
+
+#   # 📜 Schema
+#   - repo: https://github.com/python-jsonschema/check-jsonschema
+#     rev: 0.33.0
+#     hooks:
+#       - id: check-jsonschema
+#         name: 📜 Validate JSON/YAML schema
+#         entry: check-jsonschema --builtin-schema=draft7
+#         language: system
+#         types: [yaml, json]
+#         files: \.(yaml|yml|json)$
+
+  # 📘 Markdown
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.44.0
+    hooks:
+      - id: markdownlint
+
+  # # 📄 Helm Docs Generator
+  # - repo: https://github.com/norwoodj/helm-docs
+  #   rev: v1.14.2
+  #   hooks:
+  #     - id: helm-docs

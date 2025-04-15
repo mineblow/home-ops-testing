@@ -1,0 +1,13 @@
+---
+name: Plan Matrix
+
+on:
+    repository_dispatch:
+      types: [matrix-env-updated]
+
+jobs:
+    plan:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
