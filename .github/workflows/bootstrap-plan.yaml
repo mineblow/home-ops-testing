@@ -40,7 +40,7 @@ jobs:
           oauth-secret: ${{ env.TAILSCALE_CLIENT_SECRET }}
           hostname: github-bootstrap-plan
           tags: tag:github-ci
-      
+
       - name: 🌐 Start Tailscale (self-hosted)
         if: ${{ env.RUNNER_ENV == 'self-hosted' }}
         run: bash ./.scripts/cicd/bootstrap/start-tailscale.sh
@@ -109,8 +109,7 @@ jobs:
             | jq -r '.data.data.value // empty')
 
           echo "::add-mask::$VM_CONFIG"
-          printf "vm_config = %s\n" "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"
-          echo "" >> "$ENV_PATH/terraform.auto.tfvars"
+          printf "%s\n" "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"
 
       - name: 📥 Install OpenTofu
         run: |
