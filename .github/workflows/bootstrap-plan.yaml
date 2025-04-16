@@ -115,12 +115,18 @@
   
         - name: 📦 Tofu Init
           working-directory: ${{ env.ENV_PATH }}
+          env:
+            CONSUL_HTTP_ADDR: ${{ env.CONSUL_HTTP_ADDR }}
+            CONSUL_HTTP_TOKEN: ${{ env.CONSUL_HTTP_TOKEN }}
           run: tofu init -backend-config=backend-consul.hcl -reconfigure
   
         - name: 🧊 Tofu Plan
           working-directory: ${{ env.ENV_PATH }}
+          env:
+            CONSUL_HTTP_ADDR: ${{ env.CONSUL_HTTP_ADDR }}
+            CONSUL_HTTP_TOKEN: ${{ env.CONSUL_HTTP_TOKEN }}
           run: tofu plan -no-color -out=tfplan
-  
+
         - name: 💾 Save tfplan to Vault
           run: |
             B64=$(base64 -w 0 "${{ env.ENV_PATH }}/tfplan")
