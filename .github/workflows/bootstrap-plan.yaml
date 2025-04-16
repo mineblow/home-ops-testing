@@ -117,10 +117,10 @@ jobs:
             | jq -r '.data.data.value // empty')
       
           echo "::add-mask::$SSH_KEY"
-          echo "$SSH_KEY" > "$ENV_PATH/proxmox.key"
+          printf "%s" "$SSH_KEY" > "$ENV_PATH/proxmox.key"
           chmod 600 "$ENV_PATH/proxmox.key"
       
-          echo "proxmox_ssh_private_key = \"${ENV_PATH}/proxmox.key\"" >> "$ENV_PATH/vault.auto.tfvars"
+          echo "proxmox_ssh_private_key = \"proxmox.key\"" >> "$ENV_PATH/vault.auto.tfvars"
       
           # 🔐 Inject Consul backend config
           LOCK_PATH=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
