@@ -30,17 +30,33 @@ jobs:
 
       - name: 🧠 Extract Vault bootstrap from GCP
         run: |
+          set -euo pipefail
+
           RAW=$(gcloud secrets versions access latest --secret=vault_bootstrap)
           echo "$RAW" > vault.json
 
-          echo "VAULT_ADDR=$(jq -r .vault_addr vault.json)" >> $GITHUB_ENV
-          echo "VAULT_ROLE=$(jq -r .vault_role vault.json)" >> $GITHUB_ENV
-          echo "TAILSCALE_CLIENT_ID=$(jq -r .oauth_client_id vault.json)" >> $GITHUB_ENV
-          echo "TAILSCALE_CLIENT_SECRET=$(jq -r .oauth_client_secret vault.json)" >> $GITHUB_ENV
+          REQUIRED_KEYS=(vault_addr vault_role oauth_client_id oauth_client_secret)
+          for key in "${REQUIRED_KEYS[@]}"; do
+            VALUE=$(jq -r ."$key" vault.json)
+            if [[ "$VALUE" == "null" || -z "$VALUE" ]]; then
+              echo "❌ Missing $key in vault.json"
+              exit 1
+            fi
+          done
 
-          echo "::add-mask::$(jq -r .vault_addr vault.json)"
-          echo "::add-mask::$(jq -r .oauth_client_id vault.json)"
-          echo "::add-mask::$(jq -r .oauth_client_secret vault.json)"
+          export VAULT_ADDR=$(jq -r .vault_addr vault.json)
+          export VAULT_ROLE=$(jq -r .vault_role vault.json)
+          export CLIENT_ID=$(jq -r .oauth_client_id vault.json)
+          export CLIENT_SECRET=$(jq -r .oauth_client_secret vault.json)
+
+          echo "::add-mask::$VAULT_ADDR"
+          echo "::add-mask::$CLIENT_ID"
+          echo "::add-mask::$CLIENT_SECRET"
+
+          echo "VAULT_ADDR=$VAULT_ADDR" >> "$GITHUB_ENV"
+          echo "VAULT_ROLE=$VAULT_ROLE" >> "$GITHUB_ENV"
+          echo "TAILSCALE_CLIENT_ID=$CLIENT_ID" >> "$GITHUB_ENV"
+          echo "TAILSCALE_CLIENT_SECRET=$CLIENT_SECRET" >> "$GITHUB_ENV"
 
       - name: 🌐 Start Tailscale
         uses: tailscale/github-action@v2
@@ -50,32 +66,46 @@ jobs:
           hostname: github-bootstrap-plan
           tags: tag:github-ci
 
-      - name: 🔓 Authenticate to Vault
+      - name: 🔓 Authenticate to Vault (OIDC)
         run: |
-          JWT=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
-          VAULT_TOKEN=$(curl -s --request POST --data "{\"jwt\":\"$JWT\",\"role\":\"${VAULT_ROLE}\"}" "$VAULT_ADDR/v1/auth/jwt/login" | jq -r .auth.client_token)
+          set -euo pipefail
+
+          JWT=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+                      "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
+
+          RESPONSE=$(curl -s --request POST \
+            --data "{\"jwt\":\"$JWT\",\"role\":\"${VAULT_ROLE}\"}" \
+            "$VAULT_ADDR/v1/auth/jwt/login")
+
+          VAULT_TOKEN=$(echo "$RESPONSE" | jq -r .auth.client_token)
+
+          if [[ "$VAULT_TOKEN" == "null" || -z "$VAULT_TOKEN" ]]; then
+            echo "❌ Vault login failed"
+            echo "$RESPONSE"
+            exit 1
+          fi
 
           echo "::add-mask::$VAULT_TOKEN"
-          echo "VAULT_TOKEN=$VAULT_TOKEN" >> $GITHUB_ENV
+          echo "VAULT_TOKEN=$VAULT_TOKEN" >> "$GITHUB_ENV"
 
-          - name: 🔐 Fetch secrets & write config
-          run: |
-            set -euo pipefail
-            mkdir -p "$ENV_PATH"
-            > "$ENV_PATH/vault.auto.tfvars"
-            > "$ENV_PATH/backend-consul.hcl"
-        
-            # 🔐 Inject Proxmox API values
-            declare -A PROXMOX=(
-              ["proxmox_api_url"]="api_url"
-              ["proxmox_api_token"]="automation_full_token"
-            )
-        
-            for VAR in "${!PROXMOX[@]}"; do
-              VAL=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/proxmox/${PROXMOX[$VAR]}" | jq -r '.data.data.value // empty')
-              echo "::add-mask::$VAL"
-              echo "$VAR = \"$VAL\"" >> "$ENV_PATH/vault.auto.tfvars"
-            done
+      - name: 🔐 Fetch secrets & write config
+        run: |
+          set -euo pipefail
+          mkdir -p "$ENV_PATH"
+          > "$ENV_PATH/vault.auto.tfvars"
+          > "$ENV_PATH/backend-consul.hcl"
+      
+          # 🔐 Inject Proxmox API values
+          declare -A PROXMOX=(
+            ["proxmox_api_url"]="api_url"
+            ["proxmox_api_token"]="automation_full_token"
+          )
+      
+          for VAR in "${!PROXMOX[@]}"; do
+            VAL=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/proxmox/${PROXMOX[$VAR]}" | jq -r '.data.data.value // empty')
+            echo "::add-mask::$VAL"
+            echo "$VAR = \"$VAL\"" >> "$ENV_PATH/vault.auto.tfvars"
+          done
         
             # 🔐 Inject Proxmox SSH config
             echo 'proxmox_ssh_user = "auto"' >> "$ENV_PATH/vault.auto.tfvars"
