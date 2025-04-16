@@ -61,7 +61,6 @@ jobs:
       - name: 🔐 Fetch secrets & write config
         run: |
           set -euo pipefail
-
           mkdir -p "$ENV_PATH"
           > "$ENV_PATH/vault.auto.tfvars"
           > "$ENV_PATH/backend-consul.hcl"
@@ -80,17 +79,14 @@ jobs:
 
           # 🔐 Inject required SSH config
           echo 'proxmox_ssh_user = "auto"' >> "$ENV_PATH/vault.auto.tfvars"
+
           SSH_KEY=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/proxmox/automation_ssh_key" | jq -r '.data.data.value')
           echo "::add-mask::$SSH_KEY"
-          echo 'proxmox_ssh_private_key = <<EOKEY' >> "$ENV_PATH/vault.auto.tfvars"
-          echo "$SSH_KEY" >> "$ENV_PATH/vault.auto.tfvars"
-          echo 'EOKEY' >> "$ENV_PATH/vault.auto.tfvars"
+          echo "$SSH_KEY" > "$ENV_PATH/proxmox.key"
+          chmod 600 "$ENV_PATH/proxmox.key"
 
-          # 🧠 Inject vm_config
-          VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_NAME/terraform-auto-tfvars" | jq -r '.data.data.value')
-          echo "$VM_CONFIG" >> "$ENV_PATH/vault.auto.tfvars"
+          echo "proxmox_ssh_private_key = \"${ENV_PATH}/proxmox.key\"" >> "$ENV_PATH/vault.auto.tfvars"
 
-          # 💾 Inject backend config
           LOCK_PATH=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_NAME/consul/state_locking_path" | jq -r '.data.data.value')
           LOCK_TOKEN=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_NAME/consul/state_locking_token" | jq -r '.data.data.value')
           CONSUL_DOMAIN=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/consul/domain" | jq -r '.data.data.value' | sed 's:/*$::')
@@ -174,4 +170,5 @@ jobs:
 
       - name: 🧹 Cleanup
         if: always()
-        run: rm -f vault.auto.tfvars backend-consul.hcl tfplan vault.json install-opentofu.sh || true
+        run: |
+          rm -f vault.auto.tfvars backend-consul.hcl tfplan vault.json install-opentofu.sh "${ENV_PATH}/proxmox.key" || true
