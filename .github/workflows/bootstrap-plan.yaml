@@ -82,8 +82,9 @@ jobs:
       - name: 🔐 Fetch secrets & write config
         run: |
           set -euo pipefail
-          > vault.auto.tfvars
-          > backend-consul.hcl
+          > $ENV_PATH/backend-consul.hcl
+          > $ENV_PATH/vault.auto.tfvars
+
 
           declare -A PROXMOX=(
             ["proxmox_api_url"]="api_url"
@@ -124,7 +125,7 @@ jobs:
 
       - name: 📦 Tofu Init
         working-directory: ${{ env.ENV_PATH }}
-        run: tofu init -backend-config=../../backend-consul.hcl -reconfigure
+        run: tofu init -backend-config=backend-consul.hcl -reconfigure
 
       - name: 🧊 Tofu Plan
         working-directory: ${{ env.ENV_PATH }}
