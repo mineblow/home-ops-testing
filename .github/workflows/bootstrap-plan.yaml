@@ -29,13 +29,13 @@ jobs:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
 
       - name: 🧠 Extract Vault bootstrap from GCP
-        run: bash ./scripts/auth-google.sh
+        run: bash ./scripts/cicd/bootstrap/auth-google.sh
 
       - name: 🌐 Start Tailscale
-        run: bash ./scripts/start-tailscale.sh
+        run: bash ./scripts/cicd/bootstrap/start-tailscale.sh
 
       - name: 🔓 Authenticate to Vault (home-ops)
-        run: bash ./scripts/vault-auth.sh
+        run: bash ./scripts/cicd/bootstrap/vault-auth.sh
 
       - name: 🔐 Fetch secrets & write tfvars files
         run: |
