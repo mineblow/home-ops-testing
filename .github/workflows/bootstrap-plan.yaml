@@ -31,7 +31,6 @@ jobs:
       - name: 🧠 Extract Vault bootstrap from GCP
         run: |
           set -euo pipefail
-
           RAW=$(gcloud secrets versions access latest --secret=vault_bootstrap)
           echo "$RAW" > vault.json
 
@@ -86,27 +85,34 @@ jobs:
             echo "$VAR = \"$VAL\"" >> $ENV_PATH/vault.auto.tfvars
           done
 
+          # ➕ Inject required SSH config
+          echo 'proxmox_ssh_user = "auto"' >> $ENV_PATH/vault.auto.tfvars
+          SSH_KEY=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
+            "$VAULT_ADDR/v1/kv/data/home-ops/proxmox/automation ssh key" | jq -r '.data.data.value')
+          echo 'proxmox_ssh_private_key = <<EOKEY' >> $ENV_PATH/vault.auto.tfvars
+          echo "$SSH_KEY" >> $ENV_PATH/vault.auto.tfvars
+          echo 'EOKEY' >> $ENV_PATH/vault.auto.tfvars
+
+          # ➕ Inject backend config
           LOCK_PATH=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
             "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_NAME/consul/state_locking_path" \
             | jq -r '.data.data.value')
-
           LOCK_TOKEN=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
             "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_NAME/consul/state_locking_token" \
             | jq -r '.data.data.value')
-
           CONSUL_DOMAIN=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
-            "$VAULT_ADDR/v1/kv/data/home-ops/consul/domain" \
-            | jq -r '.data.data.value' | sed 's:/*$::')
+            "$VAULT_ADDR/v1/kv/data/home-ops/consul/domain" | jq -r '.data.data.value' | sed 's:/*$::')
 
           echo "address = \"$CONSUL_DOMAIN\"" >> $ENV_PATH/backend-consul.hcl
           echo "path    = \"$LOCK_PATH\"" >> $ENV_PATH/backend-consul.hcl
 
           echo "CONSUL_HTTP_ADDR=$CONSUL_DOMAIN" >> $GITHUB_ENV
+          echo "::add-mask::$LOCK_TOKEN"
           echo "CONSUL_HTTP_TOKEN=$LOCK_TOKEN" >> $GITHUB_ENV
 
       - name: 📥 Install OpenTofu
         run: |
-          curl --proto '=https' --tlsv1.2 -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
+          curl -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
           chmod +x install-opentofu.sh
           ./install-opentofu.sh --install-method standalone --opentofu-version 1.6.2
           echo "$HOME/.opentofu/bin" >> $GITHUB_PATH
