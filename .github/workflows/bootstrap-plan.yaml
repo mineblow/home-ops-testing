@@ -109,7 +109,7 @@ jobs:
             | jq -r '.data.data.value // empty')
 
           echo "::add-mask::$VM_CONFIG"
-          echo "vm_config = $VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"
+          printf "vm_config = %s\n" "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"
 
       - name: 📥 Install OpenTofu
         run: |
