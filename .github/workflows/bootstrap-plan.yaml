@@ -79,7 +79,7 @@ jobs:
 
           # ➕ Inject required SSH config
           echo 'proxmox_ssh_user = "auto"' >> "$ENV_PATH/vault.auto.tfvars"
-          SSH_KEY=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/proxmox/automation ssh key" | jq -r '.data.data.value')
+          SSH_KEY=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/proxmox/automation_ssh_key" | jq -r '.data.data.value')
           echo 'proxmox_ssh_private_key = <<EOKEY' >> "$ENV_PATH/vault.auto.tfvars"
           echo "$SSH_KEY" >> "$ENV_PATH/vault.auto.tfvars"
           echo 'EOKEY' >> "$ENV_PATH/vault.auto.tfvars"
@@ -94,8 +94,8 @@ jobs:
           echo "path    = \"$LOCK_PATH\"" >> "$ENV_PATH/backend-consul.hcl"
 
           echo "CONSUL_HTTP_ADDR=$CONSUL_DOMAIN" >> $GITHUB_ENV
-          echo "CONSUL_HTTP_TOKEN=$LOCK_TOKEN" >> $GITHUB_ENV
           echo "::add-mask::$LOCK_TOKEN"
+          echo "CONSUL_HTTP_TOKEN=$LOCK_TOKEN" >> $GITHUB_ENV
 
       - name: 📥 Install OpenTofu
         run: |
