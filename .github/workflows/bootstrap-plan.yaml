@@ -143,10 +143,7 @@ jobs:
           echo "CONSUL_HTTP_TOKEN=$LOCK_TOKEN" >> $GITHUB_ENV
       
           # 🔐 Inject vm_config
-          VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
-            "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_NAME/terraform-auto-tfvars" \
-            | jq -c '.data.data')
-
+          VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_NAME/terraform-auto-tfvars" | jq -r '.data.data.value')
           echo "vm_config = $VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"
         
       - name: 📥 Install OpenTofu
