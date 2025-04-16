@@ -114,6 +114,11 @@ jobs:
           export CONSUL_HTTP_ADDR="$CONSUL_DOMAIN"
           export CONSUL_HTTP_TOKEN="$LOCK_TOKEN"
 
+      - name: 📥 Install OpenTofu
+        run: |
+          curl -s https://get.opentofu.org/install.sh | bash
+          echo "$HOME/.opentofu/bin" >> $GITHUB_PATH
+
       - name: 📦 Tofu Init
         working-directory: ${{ env.ENV_PATH }}
         run: tofu init -backend-config=../../backend-consul.hcl -reconfigure
