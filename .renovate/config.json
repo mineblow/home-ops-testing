@@ -1,0 +1,12 @@
+{
+  "regexManagers": [
+    {
+      "fileMatch": ["^\\.github/workflows/.*\\.ya?ml$"],
+      "matchStrings": [
+        "install-opentofu.sh --install-method standalone --version (?<currentValue>v?[0-9.]+)"
+      ],
+      "depNameTemplate": "opentofu/opentofu",
+      "datasourceTemplate": "github-releases"
+    }
+  ]
+}
