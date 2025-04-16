@@ -65,7 +65,6 @@ jobs:
           > "$ENV_PATH/vault.auto.tfvars"
           > "$ENV_PATH/backend-consul.hcl"
 
-          # ⛓ Inject Proxmox API values
           declare -A PROXMOX=(
             ["proxmox_api_url"]="api_url"
             ["proxmox_api_token"]="automation_full_token"
@@ -77,7 +76,6 @@ jobs:
             echo "$VAR = \"$VAL\"" >> "$ENV_PATH/vault.auto.tfvars"
           done
 
-          # 🔐 Inject required SSH config
           echo 'proxmox_ssh_user = "auto"' >> "$ENV_PATH/vault.auto.tfvars"
 
           SSH_KEY=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/proxmox/automation_ssh_key" | jq -r '.data.data.value')
@@ -140,14 +138,13 @@ jobs:
             const comment = [
               '### 🧊 Terraform Plan for `bootstrap-runner`',
               '',
-              '📦 Plan is stored in Vault at:',
+              '📦 Plan stored in Vault:',
               '`kv/home-ops/opentofu/homelab/bootstrap-runner/plans/staging`',
               '',
-              '🧾 To inspect it locally:',
+              '🧾 To view it:',
               '```bash',
               'vault kv get -field=plan kv/home-ops/opentofu/homelab/bootstrap-runner/plans/staging | base64 -d | less',
               '```',
-              '',
               `✅ Commit: \`${{ github.sha }}\``,
               `🕓 Generated: \`${new Date().toISOString()}\``
             ].join('\n');
