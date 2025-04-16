@@ -145,8 +145,8 @@ jobs:
           # 🔐 Inject vm_config
           VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
             "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_NAME/terraform-auto-tfvars" \
-            | jq -c '.data.data.value')
-      
+            | jq -c '.data.data')
+
           echo "::add-mask::$VM_CONFIG"
           echo "vm_config = $VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"
         
