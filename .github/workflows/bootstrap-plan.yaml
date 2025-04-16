@@ -110,6 +110,7 @@ jobs:
 
           echo "::add-mask::$VM_CONFIG"
           printf "vm_config = %s\n" "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"
+          echo "" >> "$ENV_PATH/terraform.auto.tfvars"
 
       - name: 📥 Install OpenTofu
         run: |
