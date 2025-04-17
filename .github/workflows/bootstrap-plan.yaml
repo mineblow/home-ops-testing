@@ -123,7 +123,7 @@ jobs:
 
       - name: 🧊 Tofu Plan (silent)
         working-directory: ${{ env.ENV_PATH }}
-        run: tofu plan -no-color -out=tfplan > /dev/null
+        run: tofu plan -no-color -out=tfplan
 
       - name: 💾 Save tfplan to Vault
         run: |
