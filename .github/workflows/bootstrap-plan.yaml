@@ -56,59 +56,38 @@ jobs:
           > "$ENV_PATH/backend-consul.hcl"
           > "$ENV_PATH/terraform.auto.tfvars"
 
-          # Proxmox API secrets
-          declare -A PROXMOX=(
-            ["proxmox_api_url"]="api_url"
-            ["proxmox_api_token"]="automation_full_token"
-          )
+          VAULT_PREFIX="kv/data/home-ops/environment/homelab/$ENV_NAME/secrets"
 
-          for VAR in "${!PROXMOX[@]}"; do
-            VAL=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
-              "$VAULT_ADDR/v1/kv/data/home-ops/proxmox/${PROXMOX[$VAR]}" \
-              | jq -r '.data.data.value // empty')
+          for SECRET in proxmox_api_url proxmox_api_token proxmox_user proxmox_ssh_key consul_state_locking_token consul_state_locking_path; do
+            VAL=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/${VAULT_PREFIX}/$SECRET" | jq -r '.data.data.value // empty')
             echo "::add-mask::$VAL"
-            echo "$VAR = \"$VAL\"" >> "$ENV_PATH/vault.auto.tfvars"
+            case $SECRET in
+              proxmox_user)
+                echo "proxmox_ssh_user = "$VAL"" >> "$ENV_PATH/vault.auto.tfvars"
+                ;;
+              proxmox_ssh_key)
+                echo "$VAL" > "$ENV_PATH/proxmox.key"
+                chmod 600 "$ENV_PATH/proxmox.key"
+                echo "proxmox_ssh_private_key = "proxmox.key"" >> "$ENV_PATH/vault.auto.tfvars"
+                ;;
+              proxmox_api_url|proxmox_api_token)
+                echo "$SECRET = "$VAL"" >> "$ENV_PATH/vault.auto.tfvars"
+                ;;
+              consul_state_locking_token)
+                echo "CONSUL_HTTP_TOKEN=$VAL" >> $GITHUB_ENV
+                ;;
+              consul_state_locking_path)
+                echo "path = "$VAL"" >> "$ENV_PATH/backend-consul.hcl"
+                ;;
+            esac
           done
 
-          echo 'proxmox_ssh_user = "auto"' >> "$ENV_PATH/vault.auto.tfvars"
-
-          # SSH Key
-          SSH_KEY=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
-            "$VAULT_ADDR/v1/kv/data/home-ops/proxmox/automation_ssh_key" \
-            | jq -r '.data.data.value // empty')
-
-          echo "::add-mask::$SSH_KEY"
-          printf "%s" "$SSH_KEY" > "$ENV_PATH/proxmox.key"
-          chmod 600 "$ENV_PATH/proxmox.key"
-
-          echo "proxmox_ssh_private_key = \"proxmox.key\"" >> "$ENV_PATH/vault.auto.tfvars"
-
-          # Consul Backend
-          LOCK_PATH=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
-            "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_NAME/consul/state_locking_path" \
-            | jq -r '.data.data.value // empty')
-
-          LOCK_TOKEN=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
-            "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_NAME/consul/state_locking_token" \
-            | jq -r '.data.data.value // empty')
-
-          CONSUL_DOMAIN=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
-            "$VAULT_ADDR/v1/kv/data/home-ops/consul/domain" \
-            | jq -r '.data.data.value // empty' | sed 's:/*$::')
-
-          echo "::add-mask::$LOCK_TOKEN"
-          echo "address = \"$CONSUL_DOMAIN\"" >> "$ENV_PATH/backend-consul.hcl"
-          echo "path    = \"$LOCK_PATH\"" >> "$ENV_PATH/backend-consul.hcl"
-
+          CONSUL_DOMAIN=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/consul/domain" | jq -r '.data.data.value // empty' | sed 's:/*$::')
+          echo "address = "$CONSUL_DOMAIN"" >> "$ENV_PATH/backend-consul.hcl"
           echo "CONSUL_HTTP_ADDR=$CONSUL_DOMAIN" >> $GITHUB_ENV
-          echo "CONSUL_HTTP_TOKEN=$LOCK_TOKEN" >> $GITHUB_ENV
 
-          # vm_config JSON blob from Vault
-          VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
-            "$VAULT_ADDR/v1/kv/data/home-ops/opentofu/homelab/$ENV_NAME/terraform-auto-tfvars" \
-            | jq -r '.data.data.value // empty')
-
-          echo "::add-mask::$VM_CONFIG"
+          VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/$ENV_NAME/opentofu/terraform-auto-tfvars" | jq -r '.data.data.value // empty')
+          echo "$VM_CONFIG" | while IFS= read -r line; do echo "::add-mask::$line"; done
           printf "%s\n" "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"
 
       - name: 📥 Install OpenTofu
@@ -119,21 +98,28 @@ jobs:
           echo "$HOME/.opentofu/bin" >> $GITHUB_PATH
           echo "PATH=$HOME/.opentofu/bin:$PATH" >> $GITHUB_ENV
 
-      - name: 📦 Tofu Init
-        working-directory: ${{ env.ENV_PATH }}
-        run: tofu init -backend-config=backend-consul.hcl -reconfigure
-
-      - name: 🧊 Tofu Plan
-        working-directory: ${{ env.ENV_PATH }}
-        run: tofu plan -no-color -out=tfplan
-
       - name: 🔓 Re-auth as vault-writer
         env:
           VAULT_ROLE: vault-writer
         run: bash ./scripts/vault-auth.sh
 
+      - name: 📦 Tofu Init
+        working-directory: ${{ env.ENV_PATH }}
+        run: tofu init -backend-config=backend-consul.hcl -reconfigure
+
+      - name: 🧊 Tofu Plan (silent)
+        working-directory: ${{ env.ENV_PATH }}
+        run: tofu plan -no-color -out=tfplan > /dev/null
+
       - name: 💾 Save tfplan to Vault
-        run: bash ./scripts/push-tfplan.sh
+        run: |
+          PLAN_B64=$(base64 < tfplan | tr -d '\n')
+          echo "$PLAN_B64" | fold -w 64 | while read line; do echo "::add-mask::$line"; done
+
+          curl -s --request POST "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/${ENV_NAME}/opentofu/plans/staging" \
+            --header "X-Vault-Token: $VAULT_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data "$(printf '{"data":{"plan":"%s"}}' "$PLAN_B64")"
 
       - name: 🧊 Comment plan in PR
         uses: actions/github-script@v7
@@ -143,12 +129,12 @@ jobs:
             const comment = [
               '### 🧊 Terraform Plan for `bootstrap-runner`',
               '',
-              '📦 Plan stored in Vault:',
-              '`kv/home-ops/opentofu/homelab/bootstrap-runner/plans/staging`',
+              '📦 Plan stored securely in Vault:',
+              '`kv/home-ops/environment/homelab/bootstrap-runner/opentofu/plans/staging`',
               '',
               '🧾 To view it:',
               '```bash',
-              'vault kv get -field=plan kv/home-ops/opentofu/homelab/bootstrap-runner/plans/staging | base64 -d | less',
+              'vault kv get -field=plan kv/home-ops/environment/homelab/bootstrap-runner/opentofu/plans/staging | base64 -d | less',
               '```',
               `✅ Commit: \`${{ github.sha }}\``,
               `🕓 Generated: \`${new Date().toISOString()}\``
