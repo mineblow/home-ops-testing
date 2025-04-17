@@ -22,7 +22,7 @@ if [[ ! -f "$PLAN_FILE" ]]; then
 fi
 
 # Safe base64 encoding
-PLAN_B64=$(base64 < "$PLAN_FILE" | tr -d '\n')
+PLAN_B64=$(base64 < "$PLAN_FILE")
 
 # Mask each line (in case multiline leaks later)
 echo "$PLAN_B64" | fold -w 64 | while read -r line; do echo "::add-mask::$line"; done
