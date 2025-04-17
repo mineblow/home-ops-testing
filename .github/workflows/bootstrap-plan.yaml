@@ -114,26 +114,15 @@ jobs:
           echo "$HOME/.opentofu/bin" >> $GITHUB_PATH
           echo "PATH=$HOME/.opentofu/bin:$PATH" >> $GITHUB_ENV
 
-      - name: 📆 Tofu Init
-        working-directory: ${{ env.ENV_PATH }}
-        run: tofu init -backend-config=backend-consul.hcl -reconfigure
-
-      - name: 🦢 Tofu Plan (silent)
-        working-directory: ${{ env.ENV_PATH }}
-        run: tofu plan -no-color -out=tfplan
-
-      - name: 🗃 Save tfplan to Vault
+      - name: 🧊 Run secure tofu plan and store in Vault
         run: |
-          PLAN_PATH="${ENV_PATH}/tfplan"
-          [ ! -f "$PLAN_PATH" ] && echo "tfplan not found" && exit 1
-
-          PLAN_B64=$(base64 < "$PLAN_PATH" | tr -d '\n')
-          echo "$PLAN_B64" | fold -w 64 | while read line; do echo "::add-mask::$line"; done
-
-          curl -s --request POST "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/${ENV_NAME}/opentofu/plans/staging" \
-            --header "X-Vault-Token: $VAULT_TOKEN" \
-            --header "Content-Type: application/json" \
-            --data "$(printf '{\"data\":{\"plan\":\"%s\"}}' "$PLAN_B64")"
+          bash ./.scripts/cicd/plan-to-vault.sh
+        env:
+          ENV_NAME: ${{ env.ENV_NAME }}
+          ENV_PATH: ${{ env.ENV_PATH }}
+          VAULT_ADDR: ${{ env.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+          VAULT_PLAN_PATH: kv/data/home-ops/environment/homelab/${{ env.ENV_NAME }}/opentofu/plans/staging
 
       - name: 🚓 Create or update Terraform Plan PR
         run: |
