@@ -161,7 +161,7 @@ jobs:
             echo "$PLAN_PATH - Generated at $TIMESTAMP" > "$FILE"
             git add "$FILE"
             git commit -m "$COMMIT_MSG" || echo "ℹ️ Nothing to commit"
-            git push origin "$BRANCH"
+            git push origin "$BRANCH" || echo "ℹ️ Nothing to push"
           else
             echo "🚀 Creating new branch and PR..."
             git checkout -b "$BRANCH"
@@ -189,9 +189,30 @@ jobs:
                   "🕓 Generated: \`$TIMESTAMP\`"
               )"
           fi
+      
+          # Always update PR body if it exists
+          if gh pr view "$BRANCH" --json number &>/dev/null; then
+            echo "✍️ Updating PR body with fresh timestamp..."
+            gh pr edit "$BRANCH" --body "$(
+              printf '%s\n' \
+                "### 🧊 Terraform Plan for \`$ENV_NAME\`" \
+                "" \
+                "📦 **Stored securely in Vault:**" \
+                "\`$PLAN_PATH\`" \
+                "" \
+                "🧾 To view:" \
+                '```bash' \
+                "vault kv get -field=plan $PLAN_PATH | base64 -d | less" \
+                '```' \
+                "" \
+                "✅ Merge this PR to trigger apply." \
+                "" \
+                "🕓 Generated: \`$TIMESTAMP\`"
+            )"
+          fi
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   
-
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
       - name: 🧹 Cleanup
         if: always()
         run: |
