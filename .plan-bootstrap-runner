@@ -1,1 +1,8 @@
-kv/home-ops/environment/homelab/bootstrap-runner/opentofu/plans/staging - Generated at 2025-04-17T11:57:00Z
+kv/home-ops/environment/homelab/bootstrap-runner/opentofu/plans/staging > .plan-bootstrap-runner
+  git add .plan-bootstrap-runner
+  git commit -m 🧊 Plan for bootstrap-runner || echo ℹ️ Nothing to commit
+  git push origin plan-bootstrap-runner || echo ℹ️ Nothing to push
+else
+  echo 🚀 Creating new branch and PR...
+  git checkout -b plan-bootstrap-runner
+  echo kv/home-ops/environment/homelab/bootstrap-runner/opentofu/plans/staging
