@@ -137,7 +137,7 @@ jobs:
           PLAN_B64=$(base64 < "$PLAN_PATH" | tr -d '\n')
           echo "$PLAN_B64" | fold -w 64 | while read line; do echo "::add-mask::$line"; done
       
-          curl -s --request POST "$VAULT_ADDR/v1/kv/home-ops/environment/homelab/${ENV_NAME}/opentofu/plans/staging" \
+          curl -s --request POST "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/${ENV_NAME}/opentofu/plans/staging" \
             --header "X-Vault-Token: $VAULT_TOKEN" \
             --header "Content-Type: application/json" \
             --data "$(printf '{"data":{"plan":"%s"}}' "$PLAN_B64")"      
