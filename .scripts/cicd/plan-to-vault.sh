@@ -6,7 +6,7 @@ set -euo pipefail
 : "${ENV_PATH:?Missing ENV_PATH}"
 : "${VAULT_ADDR:?Missing VAULT_ADDR}"
 : "${VAULT_TOKEN:?Missing VAULT_TOKEN}"
-: "${VAULT_PLAN_PATH:?Missing VAULT_PLAN_PATH}"  # Must be explicit to avoid accidental overwrite
+: "${VAULT_PLAN_PATH:?Missing VAULT_PLAN_PATH}"  # Must NOT start with kv/data/, just kv/...
 
 PLAN_FILE="${ENV_PATH}/tfplan"
 
@@ -21,7 +21,10 @@ if [[ ! -f "$PLAN_FILE" ]]; then
   exit 1
 fi
 
-echo "🔐 Uploading raw plan file to Vault at: $VAULT_PLAN_PATH"
-vault kv put "$VAULT_PLAN_PATH" plan=@"$PLAN_FILE"
+echo "📦 Encoding plan file as base64..."
+ENCODED=$(base64 -w 0 "$PLAN_FILE")
+
+echo "🔐 Uploading encoded plan to Vault at: $VAULT_PLAN_PATH"
+vault kv put "$VAULT_PLAN_PATH" plan="$ENCODED"
 
 echo "✅ Plan stored at $VAULT_PLAN_PATH"
