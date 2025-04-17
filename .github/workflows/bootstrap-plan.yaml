@@ -59,7 +59,16 @@ jobs:
           VAULT_PREFIX="kv/data/home-ops/environment/homelab/$ENV_NAME/secrets"
 
           for SECRET in proxmox_api_url proxmox_api_token proxmox_user proxmox_ssh_key consul_state_locking_token consul_state_locking_path; do
+            echo "::group::Debug raw Vault value for $SECRET"
+            curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/${VAULT_PREFIX}/$SECRET" | jq
+            echo "::endgroup::"
+
             VAL=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/${VAULT_PREFIX}/$SECRET" | jq -r '.data.data.value // empty')
+
+            if [ -z "$VAL" ]; then
+              echo "::warning::Vault key $SECRET returned empty"
+            fi
+
             case $SECRET in
               proxmox_user)
                 echo "::add-mask::$VAL"
@@ -91,7 +100,7 @@ jobs:
           echo "address = "$CONSUL_DOMAIN"" >> "$ENV_PATH/backend-consul.hcl"
           echo "CONSUL_HTTP_ADDR=$CONSUL_DOMAIN" >> $GITHUB_ENV
 
-          VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN"             "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/$ENV_NAME/opentofu/terraform-auto-tfvars"             | jq -r '.data.data.value // empty')
+          VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/$ENV_NAME/opentofu/terraform-auto-tfvars" | jq -r '.data.data.value // empty')
           echo "$VM_CONFIG" | while IFS= read -r line; do echo "::add-mask::$line"; done
           printf "%s\n" "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"
 
