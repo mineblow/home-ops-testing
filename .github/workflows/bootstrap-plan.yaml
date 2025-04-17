@@ -66,32 +66,36 @@ jobs:
             VAL=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/${VAULT_PREFIX}/$SECRET" | jq -r '.data.data.value // empty')
 
             if [ -z "$VAL" ]; then
-              echo "::warning::Vault key $SECRET returned empty"
+              echo "::warning::Vault key $SECRET returned empty or not found"
             fi
 
             case $SECRET in
               proxmox_user)
-                echo "::add-mask::$VAL"
-                echo "proxmox_ssh_user = "$VAL"" >> "$ENV_PATH/vault.auto.tfvars"
+                if [ -n "$VAL" ]; then echo "::add-mask::$VAL"; fi
+                echo "proxmox_ssh_user = \"$VAL\"" >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
               proxmox_ssh_key)
-                echo "$VAL" | while IFS= read -r line; do
-                  [ -n "$line" ] && echo "::add-mask::$line"
-                done
+                if [ -n "$VAL" ]; then
+                  echo "$VAL" | while IFS= read -r line; do
+                    [ -n "$line" ] && echo "::add-mask::$line"
+                  done
+                else
+                  echo "::warning::$SECRET (SSH key) is empty, skipping mask"
+                fi
                 echo "$VAL" > "$ENV_PATH/proxmox.key" 2>/dev/null
                 chmod 600 "$ENV_PATH/proxmox.key"
-                echo "proxmox_ssh_private_key = "proxmox.key"" >> "$ENV_PATH/vault.auto.tfvars"
+                echo "proxmox_ssh_private_key = \"proxmox.key\"" >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
               proxmox_api_url|proxmox_api_token)
-                echo "::add-mask::$VAL"
-                echo "$SECRET = "$VAL"" >> "$ENV_PATH/vault.auto.tfvars"
+                if [ -n "$VAL" ]; then echo "::add-mask::$VAL"; fi
+                echo "$SECRET = \"$VAL\"" >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
               consul_state_locking_token)
-                echo "::add-mask::$VAL"
+                if [ -n "$VAL" ]; then echo "::add-mask::$VAL"; fi
                 echo "CONSUL_HTTP_TOKEN=$VAL" >> $GITHUB_ENV
                 ;;
               consul_state_locking_path)
-                echo "path = "$VAL"" >> "$ENV_PATH/backend-consul.hcl"
+                echo "path = \"$VAL\"" >> "$ENV_PATH/backend-consul.hcl"
                 ;;
             esac
           done
