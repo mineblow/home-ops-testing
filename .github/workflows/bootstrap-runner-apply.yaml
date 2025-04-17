@@ -23,6 +23,11 @@ jobs:
       - name: 🥦 Checkout repo
         uses: actions/checkout@v4
 
+      - name: 🔐 Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+
       - name: 🧠 Extract Vault bootstrap from GCP
         run: bash ./.scripts/cicd/bootstrap/auth-google.sh
 
