@@ -45,7 +45,15 @@ jobs:
         if: ${{ env.RUNNER_ENV == 'self-hosted' }}
         run: bash ./.scripts/cicd/bootstrap/start-tailscale.sh
 
-      - name: 🔓 Authenticate to Vault (home-ops)
+      - name: 🔓 Authenticate to Vault (read)
+        env:
+          VAULT_ROLE: bootstrap-runner-read
+        run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
+
+      - name: 🔑 Authenticate to Vault (write)
+        env:
+          VAULT_ROLE: bootstrap-runner-rw
+          VAULT_TOKEN_VAR_NAME: VAULT_TOKEN_RW
         run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
 
       - name: 🔐 Fetch secrets & write tfvars files
@@ -104,7 +112,7 @@ jobs:
           echo "$VM_CONFIG" | while IFS= read -r line; do echo "::add-mask::$line"; done
           printf "%s\n" "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"
 
-      - name: 📥 Install OpenTofu
+      - name: 📅 Install OpenTofu
         run: |
           curl -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
           chmod +x install-opentofu.sh
@@ -112,71 +120,60 @@ jobs:
           echo "$HOME/.opentofu/bin" >> $GITHUB_PATH
           echo "PATH=$HOME/.opentofu/bin:$PATH" >> $GITHUB_ENV
 
-      - name: 🔓 Re-auth as bootstrap-runner-rw
-        env:
-          VAULT_ROLE: bootstrap-runner-rw
-        run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
-
       - name: 📦 Tofu Init
         working-directory: ${{ env.ENV_PATH }}
         run: tofu init -backend-config=backend-consul.hcl -reconfigure
 
-      - name: 🧊 Tofu Plan (silent)
+      - name: 🦢 Tofu Plan (silent)
         working-directory: ${{ env.ENV_PATH }}
         run: tofu plan -no-color -out=tfplan
 
-      - name: 💾 Save tfplan to Vault
+      - name: 🗋 Save tfplan to Vault
         run: |
           PLAN_PATH="${ENV_PATH}/tfplan"
-      
-          if [ ! -f "$PLAN_PATH" ]; then
-            echo "❌ tfplan not found at $PLAN_PATH"
-            exit 1
-          fi
-      
+          [ ! -f "$PLAN_PATH" ] && echo "tfplan not found" && exit 1
+
           PLAN_B64=$(base64 < "$PLAN_PATH" | tr -d '\n')
           echo "$PLAN_B64" | fold -w 64 | while read line; do echo "::add-mask::$line"; done
-      
-          curl -s --request POST "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/${ENV_NAME}/opentofu/plans/staging" \
-            --header "X-Vault-Token: $VAULT_TOKEN" \
-            --header "Content-Type: application/json" \
-            --data "$(printf '{"data":{"plan":"%s"}}' "$PLAN_B64")"      
 
-      - name: 🧊 Create or update Terraform Plan PR
+          curl -s --request POST "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/${ENV_NAME}/opentofu/plans/staging" \
+            --header "X-Vault-Token: $VAULT_TOKEN_RW" \
+            --header "Content-Type: application/json" \
+            --data "$(printf '{"data":{"plan":"%s"}}' "$PLAN_B64")"
+
+      - name: 🧳 Create or update Terraform Plan PR
         run: |
           BRANCH="plan-$ENV_NAME"
           FILE=".plan-$ENV_NAME"
-          COMMIT_MSG="🧊 Plan for $ENV_NAME"
+          COMMIT_MSG="🧳 Plan for $ENV_NAME"
           PLAN_PATH="kv/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging"
           TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-      
+
           git config --global user.email "opentofu-bot@mineblow.me"
           git config --global user.name "OpenTofu CI Bot"
-      
+
           git fetch origin
-      
-          # Pull version from Vault metadata
+
           VERSION=$(curl -s \
-            -H "X-Vault-Token: $VAULT_TOKEN" \
+            -H "X-Vault-Token: $VAULT_TOKEN_READ" \
             "$VAULT_ADDR/v1/kv/metadata/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging" \
             | jq -r '.data.current_version // "unknown"')
-      
-          BODY="$(printf '%s\n' \
-            "### 🧊 Terraform Plan for \`$ENV_NAME\`" \
+
+          BODY=$(printf '%s\n' \
+            "### 🧳 Terraform Plan for \`$ENV_NAME\`" \
             "" \
             "📦 **Stored securely in Vault:**" \
             "\`$PLAN_PATH\` (version: \`$VERSION\`)" \
             "" \
-            "🧾 To view:" \
+            "📎 To view:" \
             '```bash' \
             "vault kv get -field=plan -version=$VERSION $PLAN_PATH | base64 -d | less" \
             '```' \
             "" \
             "✅ Merge this PR to trigger apply." \
             "" \
-            "🕓 Generated: \`$TIMESTAMP\`"
-          )"
-      
+            "🕓 Generated: \`$TIMESTAMP\`")
+
           if git ls-remote --exit-code --heads origin "$BRANCH" &>/dev/null; then
             echo "🔄 Branch exists, updating..."
             git checkout "$BRANCH"
@@ -184,8 +181,7 @@ jobs:
             git add "$FILE"
             git commit -m "$COMMIT_MSG" || echo "ℹ️ Nothing to commit"
             git push origin "$BRANCH" || echo "ℹ️ Nothing to push"
-      
-            echo "✍️ Updating existing PR..."
+            echo "✍️ Updating PR body..."
             gh pr edit "$BRANCH" --body "$BODY"
           else
             echo "🚀 Creating new branch and PR..."
@@ -194,16 +190,14 @@ jobs:
             git add "$FILE"
             git commit -m "$COMMIT_MSG"
             git push origin "$BRANCH"
-      
-            gh pr create \
-              --title "$COMMIT_MSG" \
-              --body "$BODY"
+            gh pr create --title "$COMMIT_MSG" --body "$BODY"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
-          VAULT_ADDR: ${{ env.VAULT_ADDR }}          
-      
+          VAULT_TOKEN_READ: ${{ env.VAULT_TOKEN_READ }}
+          VAULT_TOKEN_RW: ${{ env.VAULT_TOKEN_RW }}
+          VAULT_ADDR: ${{ env.VAULT_ADDR }}
+
       - name: 🧹 Cleanup
         if: always()
         run: |
