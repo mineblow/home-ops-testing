@@ -158,14 +158,14 @@ jobs:
           if git ls-remote --exit-code --heads origin "$BRANCH" &>/dev/null; then
             echo "🔄 Branch exists, updating..."
             git checkout "$BRANCH"
-            echo "$PLAN_PATH - Generated at $TIMESTAMP" > "$FILE"
+            echo "$PLAN_PATH > "$FILE"
             git add "$FILE"
             git commit -m "$COMMIT_MSG" || echo "ℹ️ Nothing to commit"
             git push origin "$BRANCH" || echo "ℹ️ Nothing to push"
           else
             echo "🚀 Creating new branch and PR..."
             git checkout -b "$BRANCH"
-            echo "$PLAN_PATH - Generated at $TIMESTAMP" > "$FILE"
+            echo "$PLAN_PATH > "$FILE"
             git add "$FILE"
             git commit -m "$COMMIT_MSG"
             git push origin "$BRANCH"
