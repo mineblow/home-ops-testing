@@ -142,46 +142,54 @@ jobs:
             --header "Content-Type: application/json" \
             --data "$(printf '{"data":{"plan":"%s"}}' "$PLAN_B64")"      
 
-      - name: 🧊 Create or Update PR for Plan
+      - name: 🧊 Create or update Terraform Plan PR
         run: |
-          BRANCH="plan-${ENV_NAME}"
-          FILE=".plan-${ENV_NAME}"
-          COMMIT_MSG="🧊 Plan for ${ENV_NAME}"
-          PLAN_NOTE="Plan stored in Vault: kv/home-ops/environment/homelab/${ENV_NAME}/opentofu/plans/staging"
-
+          BRANCH="plan-$ENV_NAME"
+          FILE=".plan-$ENV_NAME"
+          COMMIT_MSG="🧊 Plan for $ENV_NAME"
+          PLAN_PATH="kv/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging"
+          TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+      
           git config --global user.email "opentofu-bot@mineblow.me"
           git config --global user.name "OpenTofu CI Bot"
-
+      
           git fetch origin
+      
           if git ls-remote --exit-code --heads origin "$BRANCH" &>/dev/null; then
             echo "🔄 Branch exists, updating..."
             git checkout "$BRANCH"
-            echo "$PLAN_NOTE" > "$FILE"
+            echo "$PLAN_PATH - Generated at $TIMESTAMP" > "$FILE"
             git add "$FILE"
             git commit -m "$COMMIT_MSG" || echo "ℹ️ Nothing to commit"
             git push origin "$BRANCH"
           else
             echo "🚀 Creating new branch and PR..."
             git checkout -b "$BRANCH"
-            echo "$PLAN_NOTE" > "$FILE"
+            echo "$PLAN_PATH - Generated at $TIMESTAMP" > "$FILE"
             git add "$FILE"
             git commit -m "$COMMIT_MSG"
             git push origin "$BRANCH"
-
-            gh pr create --title "$COMMIT_MSG" \
-              ```yaml
-              body: |
-                ### 🧊 Terraform Plan for `bootstrap-runner`
-
-                📦 **Stored securely in Vault:**
-                `kv/home-ops/environment/homelab/bootstrap-runner/opentofu/plans/staging`
-
-                🧾 To view:
-                ```bash
-                vault kv get -field=plan kv/home-ops/environment/homelab/bootstrap-runner/opentofu/plans/staging | base64 -d | less
-          fi
+      
+            gh pr create \
+              --title "$COMMIT_MSG" \
+              --body "$(
+                printf '%s\n' \
+                  "### 🧊 Terraform Plan for \`$ENV_NAME\`" \
+                  "" \
+                  "📦 **Stored securely in Vault:**" \
+                  "\`$PLAN_PATH\`" \
+                  "" \
+                  "🧾 To view:" \
+                  '```bash' \
+                  "vault kv get -field=plan $PLAN_PATH | base64 -d | less" \
+                  '```' \
+                  "" \
+                  "✅ Merge this PR to trigger apply." \
+                  "" \
+                  "🕓 Generated: \`$TIMESTAMP\`"
+              )"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   
 
       - name: 🧹 Cleanup
         if: always()
