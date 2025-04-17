@@ -141,7 +141,7 @@ jobs:
           FILE=".plan-$ENV_NAME"
           COMMIT_MSG="🚓 Plan for $ENV_NAME"
           PLAN_PATH="kv/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging"
-          TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          TIMESTAMP="$(TZ='America/Chicago' date +"%B %d, %Y @ %-I:%M %p CT")"
 
           git config --global user.email "opentofu-bot@mineblow.me"
           git config --global user.name "OpenTofu CI Bot"
@@ -153,11 +153,11 @@ jobs:
             "$VAULT_ADDR/v1/kv/metadata/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging" \
             | jq -r '.data.current_version // "unknown"')
 
-          BODY=$(printf '%s\n' \
-            "### 🚓 Terraform Plan for \\\\`$ENV_NAME\\\`" \
+          BODY=$(printf "%s\n" \
+            "### 🚓 Terraform Plan for \`$ENV_NAME\`" \
             "" \
             "📆 **Stored securely in Vault:**" \
-            "\\\`$PLAN_PATH\\\` (version: \\\\`$VERSION\\\`)" \
+            "\`$PLAN_PATH\` (version: \`$VERSION\`)" \
             "" \
             "📌 To view:" \
             '```bash' \
@@ -166,7 +166,7 @@ jobs:
             "" \
             "✅ Merge this PR to trigger apply." \
             "" \
-            "🕓 Generated: \\\\`$TIMESTAMP\\\`")
+            "🕓 Generated: \`$TIMESTAMP\`")
 
           if git ls-remote --exit-code --heads origin "$BRANCH" &>/dev/null; then
             echo "🔄 Branch exists, updating..."
