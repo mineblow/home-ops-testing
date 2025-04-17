@@ -66,7 +66,8 @@ jobs:
                 echo "proxmox_ssh_user = "$VAL"" >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
               proxmox_ssh_key)
-                echo "$VAL" > "$ENV_PATH/proxmox.key"
+                echo "$VAL" | while IFS= read -r line; do [ -n "$line" ] && echo "::add-mask::$line"; done
+                printf "%s" "$VAL" > "$ENV_PATH/proxmox.key"
                 chmod 600 "$ENV_PATH/proxmox.key"
                 echo "proxmox_ssh_private_key = "proxmox.key"" >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
@@ -86,7 +87,7 @@ jobs:
           echo "address = "$CONSUL_DOMAIN"" >> "$ENV_PATH/backend-consul.hcl"
           echo "CONSUL_HTTP_ADDR=$CONSUL_DOMAIN" >> $GITHUB_ENV
 
-          VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/$ENV_NAME/opentofu/terraform-auto-tfvars" | jq -r '.data.data.value // empty')
+          VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN"             "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/$ENV_NAME/opentofu/terraform-auto-tfvars"             | jq -r '.data.data.value // empty')
           echo "$VM_CONFIG" | while IFS= read -r line; do echo "::add-mask::$line"; done
           printf "%s\n" "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"
 
@@ -101,7 +102,7 @@ jobs:
       - name: 🔓 Re-auth as vault-writer
         env:
           VAULT_ROLE: vault-writer
-        run: bash ./scripts/vault-auth.sh
+        run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
 
       - name: 📦 Tofu Init
         working-directory: ${{ env.ENV_PATH }}
@@ -115,11 +116,7 @@ jobs:
         run: |
           PLAN_B64=$(base64 < tfplan | tr -d '\n')
           echo "$PLAN_B64" | fold -w 64 | while read line; do echo "::add-mask::$line"; done
-
-          curl -s --request POST "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/${ENV_NAME}/opentofu/plans/staging" \
-            --header "X-Vault-Token: $VAULT_TOKEN" \
-            --header "Content-Type: application/json" \
-            --data "$(printf '{"data":{"plan":"%s"}}' "$PLAN_B64")"
+          curl -s --request POST "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/${ENV_NAME}/opentofu/plans/staging" --header "X-Vault-Token: $VAULT_TOKEN" --header "Content-Type: application/json" --data "$(printf '%s' "{"data":{"plan":"$PLAN_B64"}}")"
 
       - name: 🧊 Comment plan in PR
         uses: actions/github-script@v7
