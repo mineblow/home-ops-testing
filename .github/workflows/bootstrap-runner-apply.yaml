@@ -61,6 +61,24 @@ jobs:
           VAULT_ROLE: bootstrap-runner-ci
         run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
 
+      - name: 🔐 Rebuild backend config from Vault
+        run: |
+          set -euo pipefail
+          mkdir -p "$ENV_PATH"
+      
+          LOCK_PATH=$(vault kv get -field=value kv/home-ops/environment/homelab/$ENV_NAME/secrets/consul_state_locking_path)
+          LOCK_TOKEN=$(vault kv get -field=value kv/home-ops/environment/homelab/$ENV_NAME/secrets/consul_state_locking_token)
+          CONSUL_DOMAIN=$(vault kv get -field=value kv/home-ops/consul/domain | sed 's:/*$::')
+      
+          echo "path = \"$LOCK_PATH\"" > "$ENV_PATH/backend-consul.hcl"
+          echo "address = \"$CONSUL_DOMAIN\"" >> "$ENV_PATH/backend-consul.hcl"
+      
+          echo "CONSUL_HTTP_ADDR=$CONSUL_DOMAIN" >> $GITHUB_ENV
+          echo "CONSUL_HTTP_TOKEN=$LOCK_TOKEN" >> $GITHUB_ENV
+        env:
+          VAULT_ADDR: ${{ env.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+
       - name: 📥 Fetch and decode tfplan from Vault
         run: |
           set -euo pipefail
