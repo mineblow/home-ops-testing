@@ -42,4 +42,4 @@ curl -s --request POST "$VAULT_ADDR/v1/$VAULT_PLAN_PATH" \
 echo "✅ Plan stored at $VAULT_PLAN_PATH"
 
 # Optional: verify decode & format (comment out if not needed)
-# echo "$PLAN_B64" | base64 -d | tofu show -
+ echo "$PLAN_B64" | base64 -d | tofu show -
