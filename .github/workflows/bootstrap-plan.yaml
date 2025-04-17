@@ -59,10 +59,6 @@ jobs:
           VAULT_PREFIX="kv/data/home-ops/environment/homelab/$ENV_NAME/secrets"
 
           for SECRET in proxmox_api_url proxmox_api_token proxmox_user proxmox_ssh_key consul_state_locking_token consul_state_locking_path; do
-            echo "::group::Debug raw Vault value for $SECRET"
-            curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/${VAULT_PREFIX}/$SECRET" | jq
-            echo "::endgroup::"
-
             VAL=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/${VAULT_PREFIX}/$SECRET" | jq -r '.data.data.value // empty')
 
             if [ -z "$VAL" ]; then
@@ -71,8 +67,8 @@ jobs:
 
             case $SECRET in
               proxmox_user)
-                if [ -n "$VAL" ]; then echo "::add-mask::$VAL"; fi
-                echo "proxmox_ssh_user = \"$VAL\"" >> "$ENV_PATH/vault.auto.tfvars"
+                [ -n "$VAL" ] && echo "::add-mask::$VAL"
+                printf "proxmox_ssh_user = \"%s\"\n" "$VAL" >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
               proxmox_ssh_key)
                 if [ -n "$VAL" ]; then
@@ -84,24 +80,24 @@ jobs:
                 fi
                 echo "$VAL" > "$ENV_PATH/proxmox.key" 2>/dev/null
                 chmod 600 "$ENV_PATH/proxmox.key"
-                echo "proxmox_ssh_private_key = \"proxmox.key\"" >> "$ENV_PATH/vault.auto.tfvars"
+                printf "proxmox_ssh_private_key = \"proxmox.key\"\n" >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
               proxmox_api_url|proxmox_api_token)
-                if [ -n "$VAL" ]; then echo "::add-mask::$VAL"; fi
-                echo "$SECRET = \"$VAL\"" >> "$ENV_PATH/vault.auto.tfvars"
+                [ -n "$VAL" ] && echo "::add-mask::$VAL"
+                printf "%s = \"%s\"\n" "$SECRET" "$VAL" >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
               consul_state_locking_token)
-                if [ -n "$VAL" ]; then echo "::add-mask::$VAL"; fi
+                [ -n "$VAL" ] && echo "::add-mask::$VAL"
                 echo "CONSUL_HTTP_TOKEN=$VAL" >> $GITHUB_ENV
                 ;;
               consul_state_locking_path)
-                echo "path = \"$VAL\"" >> "$ENV_PATH/backend-consul.hcl"
+                printf "path = \"%s\"\n" "$VAL" >> "$ENV_PATH/backend-consul.hcl"
                 ;;
             esac
           done
 
           CONSUL_DOMAIN=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/consul/domain" | jq -r '.data.data.value // empty' | sed 's:/*$::')
-          echo "address = "$CONSUL_DOMAIN"" >> "$ENV_PATH/backend-consul.hcl"
+          printf "address = \"%s\"\n" "$CONSUL_DOMAIN" >> "$ENV_PATH/backend-consul.hcl"
           echo "CONSUL_HTTP_ADDR=$CONSUL_DOMAIN" >> $GITHUB_ENV
 
           VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/$ENV_NAME/opentofu/terraform-auto-tfvars" | jq -r '.data.data.value // empty')
@@ -133,7 +129,10 @@ jobs:
         run: |
           PLAN_B64=$(base64 < tfplan | tr -d '\n')
           echo "$PLAN_B64" | fold -w 64 | while read line; do echo "::add-mask::$line"; done
-          curl -s --request POST "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/${ENV_NAME}/opentofu/plans/staging"             --header "X-Vault-Token: $VAULT_TOKEN"             --header "Content-Type: application/json"             --data "$(printf '%s' "{"data":{"plan":"$PLAN_B64"}}")"
+          curl -s --request POST "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/${ENV_NAME}/opentofu/plans/staging" \
+            --header "X-Vault-Token: $VAULT_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data "$(printf '{"data":{"plan":"%s"}}' "$PLAN_B64")"
 
       - name: 🧊 Comment plan in PR
         uses: actions/github-script@v7
