@@ -32,7 +32,7 @@ jobs:
       - name: 🧠 Extract Vault bootstrap from GCP
         run: bash ./.scripts/cicd/bootstrap/auth-google.sh
 
-      - name: 🌐 Start Tailscale
+      - name: 🌐 Start Tailscale (GitHub-hosted)
         if: ${{ env.RUNNER_ENV != 'self-hosted' }}
         uses: tailscale/github-action@v2
         with:
@@ -45,6 +45,26 @@ jobs:
         if: ${{ env.RUNNER_ENV == 'self-hosted' }}
         run: bash ./.scripts/cicd/bootstrap/start-tailscale.sh
 
+      - name: 🛠 Install OpenTofu & Vault CLI
+        run: |
+          set -euo pipefail
+      
+          echo "📦 Installing Vault CLI..."
+          curl -fsSL https://releases.hashicorp.com/vault/1.15.5/vault_1.15.5_linux_amd64.zip -o vault.zip
+          unzip -q vault.zip
+          sudo install vault /usr/local/bin
+          vault --version
+      
+          echo "📦 Installing OpenTofu..."
+          curl -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
+          chmod +x install-opentofu.sh
+          ./install-opentofu.sh --install-method standalone --opentofu-version 1.6.2
+          echo "$HOME/.opentofu/bin" >> $GITHUB_PATH
+          echo "PATH=$HOME/.opentofu/bin:$PATH" >> $GITHUB_ENV
+          tofu version
+      
+        shell: bash
+
       - name: 🔓 Authenticate to Vault
         env:
           VAULT_ROLE: bootstrap-runner-ci
@@ -53,76 +73,65 @@ jobs:
       - name: 🔐 Fetch secrets & write tfvars files
         run: |
           set -euo pipefail
+      
           mkdir -p "$ENV_PATH"
-          > "$ENV_PATH/vault.auto.tfvars"
-          > "$ENV_PATH/backend-consul.hcl"
-          > "$ENV_PATH/terraform.auto.tfvars"
-
-          VAULT_PREFIX="kv/data/home-ops/environment/homelab/$ENV_NAME/secrets"
-
+          : > "$ENV_PATH/vault.auto.tfvars"
+          : > "$ENV_PATH/backend-consul.hcl"
+          : > "$ENV_PATH/terraform.auto.tfvars"
+      
+          VAULT_PREFIX="kv/home-ops/environment/homelab/$ENV_NAME/secrets"
+      
+          echo "🔐 Fetching Vault secrets..."
+      
           for SECRET in proxmox_api_url proxmox_api_token proxmox_user proxmox_ssh_key consul_state_locking_token consul_state_locking_path; do
-            VAL=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/${VAULT_PREFIX}/$SECRET" | jq -r '.data.data.value // empty')
-
-            if [ -z "$VAL" ]; then
+            VAL=$(vault kv get -field=value "$VAULT_PREFIX/$SECRET" || true)
+      
+            if [[ -z "$VAL" ]]; then
               echo "::warning::Vault key $SECRET returned empty or not found"
+              continue
             fi
-
+      
             case $SECRET in
               proxmox_user)
-                [ -n "$VAL" ] && echo "::add-mask::$VAL"
-                printf "proxmox_ssh_user = \"%s\"\n" "$VAL" >> "$ENV_PATH/vault.auto.tfvars"
+                echo "::add-mask::$VAL"
+                printf 'proxmox_ssh_user = "%s"\n' "$VAL" >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
+      
               proxmox_ssh_key)
-                if [ -n "$VAL" ]; then
-                  echo "$VAL" | while IFS= read -r line; do
-                    [ -n "$line" ] && echo "::add-mask::$line"
-                  done
-                else
-                  echo "::warning::$SECRET (SSH key) is empty, skipping mask"
-                fi
-                echo "$VAL" > "$ENV_PATH/proxmox.key" 2>/dev/null
+                echo "$VAL" > "$ENV_PATH/proxmox.key"
                 chmod 600 "$ENV_PATH/proxmox.key"
-                printf "proxmox_ssh_private_key = \"proxmox.key\"\n" >> "$ENV_PATH/vault.auto.tfvars"
+                echo "$VAL" | while IFS= read -r line; do
+                  [[ -n "$line" ]] && echo "::add-mask::$line"
+                done
+                echo 'proxmox_ssh_private_key = "proxmox.key"' >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
+      
               proxmox_api_url|proxmox_api_token)
-                [ -n "$VAL" ] && echo "::add-mask::$VAL"
-                printf "%s = \"%s\"\n" "$SECRET" "$VAL" >> "$ENV_PATH/vault.auto.tfvars"
+                echo "::add-mask::$VAL"
+                printf '%s = "%s"\n' "$SECRET" "$VAL" >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
+      
               consul_state_locking_token)
-                [ -n "$VAL" ] && echo "::add-mask::$VAL"
+                echo "::add-mask::$VAL"
                 echo "CONSUL_HTTP_TOKEN=$VAL" >> $GITHUB_ENV
                 ;;
+      
               consul_state_locking_path)
-                printf "path = \"%s\"\n" "$VAL" >> "$ENV_PATH/backend-consul.hcl"
+                echo "path = \"$VAL\"" >> "$ENV_PATH/backend-consul.hcl"
                 ;;
             esac
           done
-
-          CONSUL_DOMAIN=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/consul/domain" | jq -r '.data.data.value // empty' | sed 's:/*$::')
-          printf "address = \"%s\"\n" "$CONSUL_DOMAIN" >> "$ENV_PATH/backend-consul.hcl"
+      
+          CONSUL_DOMAIN=$(vault kv get -field=value kv/home-ops/consul/domain | sed 's:/*$::')
+          echo "address = \"$CONSUL_DOMAIN\"" >> "$ENV_PATH/backend-consul.hcl"
           echo "CONSUL_HTTP_ADDR=$CONSUL_DOMAIN" >> $GITHUB_ENV
-
-          VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/$ENV_NAME/opentofu/terraform-auto-tfvars" | jq -r '.data.data.value // empty')
+      
+          VM_CONFIG=$(vault kv get -field=value kv/home-ops/environment/homelab/$ENV_NAME/opentofu/terraform-auto-tfvars)
           echo "$VM_CONFIG" | while IFS= read -r line; do echo "::add-mask::$line"; done
-          printf "%s\n" "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"
-
-      - name: 🗕 Install OpenTofu
-        run: |
-          curl -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
-          chmod +x install-opentofu.sh
-          ./install-opentofu.sh --install-method standalone --opentofu-version 1.6.2
-          echo "$HOME/.opentofu/bin" >> $GITHUB_PATH
-          echo "PATH=$HOME/.opentofu/bin:$PATH" >> $GITHUB_ENV
-
-      - name: 🛠 Install Vault CLI
-        run: |
-          curl -fsSL https://releases.hashicorp.com/vault/1.15.5/vault_1.15.5_linux_amd64.zip -o vault.zip
-          unzip vault.zip
-          sudo install vault /usr/local/bin
+          echo "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"      
 
       - name: 🧊 Run secure tofu plan and store in Vault
-        run: |
-          bash ./.scripts/cicd/plan-to-vault.sh
+        run: bash ./.scripts/cicd/plan-to-vault.sh
         env:
           ENV_NAME: ${{ env.ENV_NAME }}
           ENV_PATH: ${{ env.ENV_PATH }}
@@ -132,6 +141,8 @@ jobs:
 
       - name: 🚓 Create or update Terraform Plan PR
         run: |
+          set -euo pipefail
+
           BRANCH="plan-$ENV_NAME"
           FILE=".plan-$ENV_NAME"
           COMMIT_MSG="🚓 Plan for $ENV_NAME"
@@ -140,13 +151,9 @@ jobs:
 
           git config --global user.email "opentofu-bot@mineblow.me"
           git config --global user.name "OpenTofu CI Bot"
-
           git fetch origin
 
-          VERSION=$(curl -s \
-            -H "X-Vault-Token: $VAULT_TOKEN" \
-            "$VAULT_ADDR/v1/kv/metadata/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging" \
-            | jq -r '.data.current_version // "unknown"')
+          VERSION=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/metadata/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging" | jq -r '.data.current_version // "unknown"')
 
           BODY=$(printf "%s\n" \
             "### 🚓 Terraform Plan for \`$ENV_NAME\`" \
@@ -170,7 +177,6 @@ jobs:
             git add "$FILE"
             git commit -m "$COMMIT_MSG" || echo "ℹ️ Nothing to commit"
             git push origin "$BRANCH" || echo "ℹ️ Nothing to push"
-            echo "✍️ Updating PR body..."
             gh pr edit "$BRANCH" --body "$BODY"
           else
             echo "🚀 Creating new branch and PR..."

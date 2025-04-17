@@ -6,7 +6,7 @@ set -euo pipefail
 : "${ENV_PATH:?Missing ENV_PATH}"
 : "${VAULT_ADDR:?Missing VAULT_ADDR}"
 : "${VAULT_TOKEN:?Missing VAULT_TOKEN}"
-: "${VAULT_PLAN_PATH:?Missing VAULT_PLAN_PATH}"
+: "${VAULT_PLAN_PATH:?Missing VAULT_PLAN_PATH}"  # Format: kv/<path>, not kv/data/...
 
 PLAN_FILE="${ENV_PATH}/tfplan"
 
@@ -23,8 +23,15 @@ fi
 
 echo "📦 Encoding plan file as base64..."
 ENCODED=$(base64 -w 0 "$PLAN_FILE")
+if [[ -z "$ENCODED" ]]; then
+  echo "❌ Base64 encoding failed or produced empty output"
+  exit 1
+fi
 
 echo "🔐 Uploading encoded plan to Vault at: $VAULT_PLAN_PATH"
-vault kv put "$VAULT_PLAN_PATH" plan="$ENCODED"
+vault kv put "$VAULT_PLAN_PATH" plan="$ENCODED" >/dev/null || {
+  echo "❌ Vault upload failed"
+  exit 1
+}
 
 echo "✅ Plan uploaded successfully to Vault: $VAULT_PLAN_PATH"

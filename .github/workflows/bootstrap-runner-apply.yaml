@@ -1,0 +1,81 @@
+---
+name: ✅ Terraform Apply (bootstrap-runner)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      ENV_NAME: bootstrap-runner
+      ENV_PATH: terraform/environments/homelab/bootstrap-runner
+      RUNNER_ENV: github-ci
+      PLAN_PATH: kv/home-ops/environment/homelab/bootstrap-runner/opentofu/plans/staging
+
+    steps:
+      - name: 🥦 Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 🧠 Extract Vault bootstrap from GCP
+        run: bash ./.scripts/cicd/bootstrap/auth-google.sh
+
+      - name: 🌐 Start Tailscale (GitHub-hosted)
+        if: ${{ env.RUNNER_ENV != 'self-hosted' }}
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ env.TAILSCALE_CLIENT_ID }}
+          oauth-secret: ${{ env.TAILSCALE_CLIENT_SECRET }}
+          hostname: github-bootstrap-plan
+          tags: tag:github-ci
+
+      - name: 🌐 Start Tailscale (self-hosted)
+        if: ${{ env.RUNNER_ENV == 'self-hosted' }}
+        run: bash ./.scripts/cicd/bootstrap/start-tailscale.sh
+
+      - name: 🛠 Install OpenTofu & Vault CLI
+        run: |
+          set -euo pipefail
+          curl -fsSL https://releases.hashicorp.com/vault/1.15.5/vault_1.15.5_linux_amd64.zip -o vault.zip
+          unzip -q vault.zip
+          sudo install vault /usr/local/bin
+          curl -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
+          chmod +x install-opentofu.sh
+          ./install-opentofu.sh --install-method standalone --opentofu-version 1.6.2
+          echo "$HOME/.opentofu/bin" >> $GITHUB_PATH
+          echo "PATH=$HOME/.opentofu/bin:$PATH" >> $GITHUB_ENV
+
+      - name: 🔓 Authenticate to Vault
+        env:
+          VAULT_ROLE: bootstrap-runner-ci
+        run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
+
+      - name: 📥 Fetch and decode tfplan from Vault
+        run: |
+          set -euo pipefail
+          mkdir -p "$ENV_PATH"
+          vault kv get -field=plan "$PLAN_PATH" | base64 -d > "$ENV_PATH/tfplan"
+        env:
+          VAULT_ADDR: ${{ env.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+
+      - name: ✅ Apply tfplan
+        run: |
+          set -euo pipefail
+          tofu -chdir="$ENV_PATH" init -backend-config=backend-consul.hcl -reconfigure
+          tofu -chdir="$ENV_PATH" apply -auto-approve "$ENV_PATH/tfplan"
+
+      - name: 🧪 Run post-provision Ansible (placeholder)
+        run: echo "🎯 Call Ansible here to finish provisioning..."
+        # replace with: ansible-playbook -i <inventory> ./ansible/bootstrap-runner.yml or similar
+
+      - name: 🧼 Cleanup
+        if: always()
+        run: |
+          rm -f install-opentofu.sh vault.zip "$ENV_PATH/tfplan"
