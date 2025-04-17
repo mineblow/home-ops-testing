@@ -128,7 +128,7 @@ jobs:
           ENV_PATH: ${{ env.ENV_PATH }}
           VAULT_ADDR: ${{ env.VAULT_ADDR }}
           VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
-          VAULT_PLAN_PATH: kv/data/home-ops/environment/homelab/${{ env.ENV_NAME }}/opentofu/plans/staging
+          VAULT_PLAN_PATH: kv/home-ops/environment/homelab/${{ env.ENV_NAME }}/opentofu/plans/staging
 
       - name: 🚓 Create or update Terraform Plan PR
         run: |
