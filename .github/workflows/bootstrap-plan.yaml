@@ -142,40 +142,38 @@ jobs:
             --header "Content-Type: application/json" \
             --data "$(printf '{"data":{"plan":"%s"}}' "$PLAN_B64")"      
 
-      - name: 🧊 Comment plan in PR
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const comment = [
-              '### 🧊 Terraform Plan for `bootstrap-runner`',
-              '',
-              '📦 Plan stored securely in Vault:',
-              '`kv/home-ops/environment/homelab/bootstrap-runner/opentofu/plans/staging`',
-              '',
-              '🧾 To view it:',
-              '```bash',
-              'vault kv get -field=plan kv/home-ops/environment/homelab/bootstrap-runner/opentofu/plans/staging | base64 -d | less',
-              '```',
-              `✅ Commit: \`${{ github.sha }}\``,
-              `🕓 Generated: \`${new Date().toISOString()}\``
-            ].join('\n');
+      - name: 🧊 Create or Update PR for Plan
+        run: |
+          BRANCH="plan-${ENV_NAME}"
+          FILE=".plan-${ENV_NAME}"
+          COMMIT_MSG="🧊 Plan for ${ENV_NAME}"
+          PLAN_NOTE="Plan stored in Vault: kv/home-ops/environment/homelab/${ENV_NAME}/opentofu/plans/staging"
 
-            const prs = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              head: `${context.repo.owner}:${context.ref.replace('refs/heads/', '')}`,
-              state: 'open'
-            });
+          git config --global user.email "opentofu-bot@mineblow.me"
+          git config --global user.name "OpenTofu CI Bot"
 
-            if (prs.data.length > 0) {
-              await github.rest.issues.createComment({
-                issue_number: prs.data[0].number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: comment
-              });
-            }
+          git fetch origin
+          if git ls-remote --exit-code --heads origin "$BRANCH" &>/dev/null; then
+            echo "🔄 Branch exists, updating..."
+            git checkout "$BRANCH"
+            echo "$PLAN_NOTE" > "$FILE"
+            git add "$FILE"
+            git commit -m "$COMMIT_MSG" || echo "ℹ️ Nothing to commit"
+            git push origin "$BRANCH"
+          else
+            echo "🚀 Creating new branch and PR..."
+            git checkout -b "$BRANCH"
+            echo "$PLAN_NOTE" > "$FILE"
+            git add "$FILE"
+            git commit -m "$COMMIT_MSG"
+            git push origin "$BRANCH"
+
+            gh pr create --title "$COMMIT_MSG" \
+              --body "🧊 Terraform Plan PR for \`${ENV_NAME}\`\n\n📦 Vault path:\n\`\`\`\n$PLAN_NOTE\n\`\`\`\n\n✅ Merge to apply." \
+              --base main --head "$BRANCH"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
 
       - name: 🧹 Cleanup
         if: always()
