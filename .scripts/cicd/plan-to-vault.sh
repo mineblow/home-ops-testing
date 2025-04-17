@@ -6,21 +6,15 @@ set -euo pipefail
 : "${ENV_PATH:?Missing ENV_PATH}"
 : "${VAULT_ADDR:?Missing VAULT_ADDR}"
 : "${VAULT_TOKEN:?Missing VAULT_TOKEN}"
-: "${VAULT_PLAN_PATH:?Missing VAULT_PLAN_PATH}"
+: "${VAULT_PLAN_PATH:?Missing VAULT_PLAN_PATH}"  # Must be explicit to avoid accidental overwrite
 
 PLAN_FILE="${ENV_PATH}/tfplan"
 
 echo "📦 Running tofu init..."
-if ! tofu -chdir="$ENV_PATH" init -backend-config=backend-consul.hcl -reconfigure >/dev/null 2>&1; then
-  echo "❌ tofu init failed"
-  exit 1
-fi
+tofu -chdir="$ENV_PATH" init -backend-config=backend-consul.hcl -reconfigure
 
 echo "🧊 Running tofu plan..."
-if ! tofu -chdir="$ENV_PATH" plan -no-color -out=tfplan >/dev/null 2>&1; then
-  echo "❌ tofu plan failed"
-  exit 1
-fi
+tofu -chdir="$ENV_PATH" plan -no-color -out=tfplan
 
 if [[ ! -f "$PLAN_FILE" ]]; then
   echo "❌ tfplan not found at $PLAN_FILE"
@@ -42,4 +36,4 @@ curl -s --request POST "$VAULT_ADDR/v1/$VAULT_PLAN_PATH" \
 echo "✅ Plan stored at $VAULT_PLAN_PATH"
 
 # Optional: verify decode & format (comment out if not needed)
- echo "$PLAN_B64" | base64 -d | tofu show -
+# echo "$PLAN_B64" | base64 -d | tofu show -
