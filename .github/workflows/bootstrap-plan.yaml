@@ -45,15 +45,17 @@ jobs:
         if: ${{ env.RUNNER_ENV == 'self-hosted' }}
         run: bash ./.scripts/cicd/bootstrap/start-tailscale.sh
 
-      - name: 🔐 Authenticate to Vault (read/write)
-        run: |
-          export VAULT_ROLE=bootstrap-runner-read
-          export VAULT_TOKEN_VAR_NAME=VAULT_TOKEN_READ
-          bash ./.scripts/cicd/bootstrap/vault-auth.sh
+      - name: 🔓 Authenticate to Vault (read)
+        env:
+          VAULT_ROLE: bootstrap-runner-read
+          VAULT_TOKEN_VAR_NAME: VAULT_TOKEN_READ
+        run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
       
-          export VAULT_ROLE=bootstrap-runner-rw
-          export VAULT_TOKEN_VAR_NAME=VAULT_TOKEN_RW
-          bash ./.scripts/cicd/bootstrap/vault-auth.sh
+      - name: 🔑 Authenticate to Vault (write)
+        env:
+          VAULT_ROLE: bootstrap-runner-rw
+          VAULT_TOKEN_VAR_NAME: VAULT_TOKEN_RW
+        run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
 
       - name: 🔐 Fetch secrets & write tfvars files
         run: |
