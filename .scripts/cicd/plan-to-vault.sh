@@ -31,7 +31,7 @@ echo "$PLAN_B64" | fold -w 64 | while read -r line; do echo "::add-mask::$line";
 curl -s --request POST "$VAULT_ADDR/v1/$VAULT_PLAN_PATH" \
   --header "X-Vault-Token: $VAULT_TOKEN" \
   --header "Content-Type: application/json" \
-  --data "$(printf '{"data":{"plan":"%s"}}' "$PLAN_B64")"
+  --data "$(jq -n --arg plan "$PLAN_B64" '{data: {plan: $plan}}')"
 
 echo "✅ Plan stored at $VAULT_PLAN_PATH"
 
