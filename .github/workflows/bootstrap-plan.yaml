@@ -114,6 +114,12 @@ jobs:
           echo "$HOME/.opentofu/bin" >> $GITHUB_PATH
           echo "PATH=$HOME/.opentofu/bin:$PATH" >> $GITHUB_ENV
 
+      - name: 🛠 Install Vault CLI
+        run: |
+          curl -fsSL https://releases.hashicorp.com/vault/1.15.5/vault_1.15.5_linux_amd64.zip -o vault.zip
+          unzip vault.zip
+          sudo install vault /usr/local/bin
+
       - name: 🧊 Run secure tofu plan and store in Vault
         run: |
           bash ./.scripts/cicd/plan-to-vault.sh

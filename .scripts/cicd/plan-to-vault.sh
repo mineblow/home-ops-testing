@@ -21,19 +21,7 @@ if [[ ! -f "$PLAN_FILE" ]]; then
   exit 1
 fi
 
-# Safe base64 encoding
-PLAN_B64=$(base64 < "$PLAN_FILE")
-
-# Mask each line (in case multiline leaks later)
-echo "$PLAN_B64" | fold -w 64 | while read -r line; do echo "::add-mask::$line"; done
-
-# Upload to Vault
-curl -s --request POST "$VAULT_ADDR/v1/$VAULT_PLAN_PATH" \
-  --header "X-Vault-Token: $VAULT_TOKEN" \
-  --header "Content-Type: application/json" \
-  --data "$(jq -n --arg plan "$PLAN_B64" '{data: {plan: $plan}}')"
+echo "🔐 Uploading raw plan file to Vault at: $VAULT_PLAN_PATH"
+vault kv put "$VAULT_PLAN_PATH" plan=@"$PLAN_FILE"
 
 echo "✅ Plan stored at $VAULT_PLAN_PATH"
-
-# Optional: verify decode & format (comment out if not needed)
-# echo "$PLAN_B64" | base64 -d | tofu show -
