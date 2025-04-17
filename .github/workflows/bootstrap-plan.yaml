@@ -48,6 +48,7 @@ jobs:
       - name: 🔓 Authenticate to Vault (read)
         env:
           VAULT_ROLE: bootstrap-runner-read
+          VAULT_TOKEN_VAR_NAME: VAULT_TOKEN_READ
         run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
 
       - name: 🔑 Authenticate to Vault (write)
@@ -67,7 +68,7 @@ jobs:
           VAULT_PREFIX="kv/data/home-ops/environment/homelab/$ENV_NAME/secrets"
 
           for SECRET in proxmox_api_url proxmox_api_token proxmox_user proxmox_ssh_key consul_state_locking_token consul_state_locking_path; do
-            VAL=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/${VAULT_PREFIX}/$SECRET" | jq -r '.data.data.value // empty')
+            VAL=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN_READ" "$VAULT_ADDR/v1/${VAULT_PREFIX}/$SECRET" | jq -r '.data.data.value // empty')
 
             if [ -z "$VAL" ]; then
               echo "::warning::Vault key $SECRET returned empty or not found"
@@ -104,11 +105,11 @@ jobs:
             esac
           done
 
-          CONSUL_DOMAIN=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/consul/domain" | jq -r '.data.data.value // empty' | sed 's:/*$::')
+          CONSUL_DOMAIN=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN_READ" "$VAULT_ADDR/v1/kv/data/home-ops/consul/domain" | jq -r '.data.data.value // empty' | sed 's:/*$::')
           printf "address = \"%s\"\n" "$CONSUL_DOMAIN" >> "$ENV_PATH/backend-consul.hcl"
           echo "CONSUL_HTTP_ADDR=$CONSUL_DOMAIN" >> $GITHUB_ENV
 
-          VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/$ENV_NAME/opentofu/terraform-auto-tfvars" | jq -r '.data.data.value // empty')
+          VM_CONFIG=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN_READ" "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/$ENV_NAME/opentofu/terraform-auto-tfvars" | jq -r '.data.data.value // empty')
           echo "$VM_CONFIG" | while IFS= read -r line; do echo "::add-mask::$line"; done
           printf "%s\n" "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"
 
@@ -128,7 +129,7 @@ jobs:
         working-directory: ${{ env.ENV_PATH }}
         run: tofu plan -no-color -out=tfplan
 
-      - name: 🗋 Save tfplan to Vault
+      - name: 🗃 Save tfplan to Vault
         run: |
           PLAN_PATH="${ENV_PATH}/tfplan"
           [ ! -f "$PLAN_PATH" ] && echo "tfplan not found" && exit 1
@@ -139,13 +140,13 @@ jobs:
           curl -s --request POST "$VAULT_ADDR/v1/kv/data/home-ops/environment/homelab/${ENV_NAME}/opentofu/plans/staging" \
             --header "X-Vault-Token: $VAULT_TOKEN_RW" \
             --header "Content-Type: application/json" \
-            --data "$(printf '{"data":{"plan":"%s"}}' "$PLAN_B64")"
+            --data "$(printf '{\"data\":{\"plan\":\"%s\"}}' "$PLAN_B64")"
 
-      - name: 🧳 Create or update Terraform Plan PR
+      - name: 🚓 Create or update Terraform Plan PR
         run: |
           BRANCH="plan-$ENV_NAME"
           FILE=".plan-$ENV_NAME"
-          COMMIT_MSG="🧳 Plan for $ENV_NAME"
+          COMMIT_MSG="🚓 Plan for $ENV_NAME"
           PLAN_PATH="kv/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging"
           TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
@@ -160,19 +161,19 @@ jobs:
             | jq -r '.data.current_version // "unknown"')
 
           BODY=$(printf '%s\n' \
-            "### 🧳 Terraform Plan for \`$ENV_NAME\`" \
+            "### 🚓 Terraform Plan for \\`$ENV_NAME\\`" \
             "" \
-            "📦 **Stored securely in Vault:**" \
-            "\`$PLAN_PATH\` (version: \`$VERSION\`)" \
+            "📆 **Stored securely in Vault:**" \
+            "\\`$PLAN_PATH\\` (version: \\`$VERSION\\`)" \
             "" \
-            "📎 To view:" \
+            "📌 To view:" \
             '```bash' \
             "vault kv get -field=plan -version=$VERSION $PLAN_PATH | base64 -d | less" \
             '```' \
             "" \
             "✅ Merge this PR to trigger apply." \
             "" \
-            "🕓 Generated: \`$TIMESTAMP\`")
+            "🕓 Generated: \\`$TIMESTAMP\\`")
 
           if git ls-remote --exit-code --heads origin "$BRANCH" &>/dev/null; then
             echo "🔄 Branch exists, updating..."
@@ -198,7 +199,7 @@ jobs:
           VAULT_TOKEN_RW: ${{ env.VAULT_TOKEN_RW }}
           VAULT_ADDR: ${{ env.VAULT_ADDR }}
 
-      - name: 🧹 Cleanup
+      - name: 🪩 Cleanup
         if: always()
         run: |
           rm -f vault.json vault.auto.tfvars terraform.auto.tfvars backend-consul.hcl tfplan install-opentofu.sh ${{ env.ENV_PATH }}/proxmox.key || true
