@@ -6,22 +6,25 @@ set -euo pipefail
 : "${ENV_PATH:?Missing ENV_PATH}"
 : "${VAULT_ADDR:?Missing VAULT_ADDR}"
 : "${VAULT_TOKEN:?Missing VAULT_TOKEN}"
-: "${VAULT_PLAN_PATH:?Missing VAULT_PLAN_PATH}"  # Must be KV v2 path *without* /data/ prefix
+: "${VAULT_PLAN_PATH:?Missing VAULT_PLAN_PATH}"
 
-PLAN_FILE="$ENV_PATH/tfplan"
+PLAN_FILE="${ENV_PATH}/tfplan"
 
-echo "📦 tofu init"
-tofu -chdir="$ENV_PATH" init -backend-config=backend-consul.hcl > /dev/null
+echo "📦 Running tofu init..."
+tofu -chdir="$ENV_PATH" init -backend-config=backend-consul.hcl -reconfigure
 
-echo "🧊 tofu plan"
-tofu -chdir="$ENV_PATH" plan -out=tfplan > /dev/null
+echo "🧊 Running tofu plan..."
+tofu -chdir="$ENV_PATH" plan -no-color -out=tfplan
 
 if [[ ! -f "$PLAN_FILE" ]]; then
   echo "❌ tfplan not found at $PLAN_FILE"
   exit 1
 fi
 
-echo "🔐 vault kv put plan -> $VAULT_PLAN_PATH"
-vault kv put "$VAULT_PLAN_PATH" plan=@"$PLAN_FILE" > /dev/null
+echo "📦 Encoding plan file as base64..."
+ENCODED=$(base64 -w 0 "$PLAN_FILE")
+
+echo "🔐 Uploading encoded plan to Vault at: $VAULT_PLAN_PATH"
+vault kv put "$VAULT_PLAN_PATH" plan="$ENCODED"
 
 echo "✅ Plan uploaded successfully to Vault: $VAULT_PLAN_PATH"
