@@ -155,64 +155,55 @@ jobs:
       
           git fetch origin
       
+          # Pull version from Vault metadata
+          VERSION=$(curl -s \
+            -H "X-Vault-Token: $VAULT_TOKEN" \
+            "$VAULT_ADDR/v1/kv/metadata/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging" \
+            | jq -r '.data.current_version // "unknown"')
+      
+          BODY="$(printf '%s\n' \
+            "### 🧊 Terraform Plan for \`$ENV_NAME\`" \
+            "" \
+            "📦 **Stored securely in Vault:**" \
+            "\`$PLAN_PATH\` (version: \`$VERSION\`)" \
+            "" \
+            "🧾 To view:" \
+            '```bash' \
+            "vault kv get -field=plan -version=$VERSION $PLAN_PATH | base64 -d | less" \
+            '```' \
+            "" \
+            "✅ Merge this PR to trigger apply." \
+            "" \
+            "🕓 Generated: \`$TIMESTAMP\`"
+          )"
+      
           if git ls-remote --exit-code --heads origin "$BRANCH" &>/dev/null; then
             echo "🔄 Branch exists, updating..."
             git checkout "$BRANCH"
-            echo "$PLAN_PATH > "$FILE"
+            echo "$PLAN_PATH - Generated at $TIMESTAMP (version $VERSION)" > "$FILE"
             git add "$FILE"
             git commit -m "$COMMIT_MSG" || echo "ℹ️ Nothing to commit"
             git push origin "$BRANCH" || echo "ℹ️ Nothing to push"
+      
+            echo "✍️ Updating existing PR..."
+            gh pr edit "$BRANCH" --body "$BODY"
           else
             echo "🚀 Creating new branch and PR..."
             git checkout -b "$BRANCH"
-            echo "$PLAN_PATH > "$FILE"
+            echo "$PLAN_PATH - Generated at $TIMESTAMP (version $VERSION)" > "$FILE"
             git add "$FILE"
             git commit -m "$COMMIT_MSG"
             git push origin "$BRANCH"
       
             gh pr create \
               --title "$COMMIT_MSG" \
-              --body "$(
-                printf '%s\n' \
-                  "### 🧊 Terraform Plan for \`$ENV_NAME\`" \
-                  "" \
-                  "📦 **Stored securely in Vault:**" \
-                  "\`$PLAN_PATH\`" \
-                  "" \
-                  "🧾 To view:" \
-                  '```bash' \
-                  "vault kv get -field=plan $PLAN_PATH | base64 -d | less" \
-                  '```' \
-                  "" \
-                  "✅ Merge this PR to trigger apply." \
-                  "" \
-                  "🕓 Generated: \`$TIMESTAMP\`"
-              )"
-          fi
-      
-          # Always update PR body if it exists
-          if gh pr view "$BRANCH" --json number &>/dev/null; then
-            echo "✍️ Updating PR body with fresh timestamp..."
-            gh pr edit "$BRANCH" --body "$(
-              printf '%s\n' \
-                "### 🧊 Terraform Plan for \`$ENV_NAME\`" \
-                "" \
-                "📦 **Stored securely in Vault:**" \
-                "\`$PLAN_PATH\`" \
-                "" \
-                "🧾 To view:" \
-                '```bash' \
-                "vault kv get -field=plan $PLAN_PATH | base64 -d | less" \
-                '```' \
-                "" \
-                "✅ Merge this PR to trigger apply." \
-                "" \
-                "🕓 Generated: \`$TIMESTAMP\`"
-            )"
+              --body "$BODY"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+          VAULT_ADDR: ${{ env.VAULT_ADDR }}          
+      
       - name: 🧹 Cleanup
         if: always()
         run: |
