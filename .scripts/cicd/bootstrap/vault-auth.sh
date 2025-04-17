@@ -28,4 +28,4 @@ fi
 
 # === Export and Mask the Token ===
 echo "::add-mask::$TOKEN"
-echo "$VAULT_TOKEN_VAR_NAME=$TOKEN" >> "$GITHUB_ENV"
+echo "$VAULT_TOKEN_VAR_NAME=$TOKEN" | tee -a "$GITHUB_ENV"
