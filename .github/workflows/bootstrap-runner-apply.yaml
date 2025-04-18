@@ -82,11 +82,22 @@ jobs:
       - name: 📥 Fetch and decode tfplan from Vault
         run: |
           set -euo pipefail
+          echo "➡️ Writing plan to $ENV_PATH/tfplan"
           mkdir -p "$ENV_PATH"
+      
+          echo "🔑 Fetching plan from: $PLAN_PATH"
+          vault kv get -field=plan "$PLAN_PATH" || { echo "❌ Vault fetch failed"; exit 1; }
+      
           vault kv get -field=plan "$PLAN_PATH" | base64 -d > "$ENV_PATH/tfplan"
+      
+          echo "✅ Plan saved:"
+          ls -lh "$ENV_PATH/tfplan"
+          file "$ENV_PATH/tfplan"
         env:
           VAULT_ADDR: ${{ env.VAULT_ADDR }}
           VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+          ENV_PATH: ${{ env.ENV_PATH }}
+          PLAN_PATH: ${{ env.PLAN_PATH }}
 
       - name: ✅ Apply tfplan
         run: |
