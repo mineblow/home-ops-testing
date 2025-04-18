@@ -24,10 +24,5 @@ provider "proxmox" {
   }
 }
 
-provider "vault" {
-  token_no_default_policy = true
-  skip_child_token        = true
-  address                 = var.vault_address
-  token                   = var.vault_token
-}
+provider "vault" {}
 provider "tls" {}
