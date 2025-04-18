@@ -3,17 +3,28 @@ resource "tls_private_key" "vm" {
   algorithm = "ED25519"
 }
 
-resource "vault_kv_secret_v2" "vm_ssh_keys" {
+resource "vault_kv_secret_v2" "vm_ssh_key_private" {
   for_each = var.vm_config
 
   mount = "kv"
-  name  = "home-ops/vm-ssh/${each.key}"
+  name  = "home-ops/environment/homelab/${each.key}/secrets/vm_ssh_key_private"
 
   data_json = jsonencode({
-    public  = tls_private_key.vm[each.key].public_key_openssh,
-    private = tls_private_key.vm[each.key].private_key_openssh
+    value = tls_private_key.vm[each.key].private_key_openssh
   })
 }
+
+resource "vault_kv_secret_v2" "vm_ssh_key_public" {
+  for_each = var.vm_config
+
+  mount = "kv"
+  name  = "home-ops/environment/homelab/${each.key}/secrets/vm_ssh_key_public"
+
+  data_json = jsonencode({
+    value = tls_private_key.vm[each.key].public_key_openssh
+  })
+}
+
 
 resource "proxmox_virtual_environment_file" "cloudinit_file" {
   for_each     = var.vm_config
