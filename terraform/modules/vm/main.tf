@@ -4,6 +4,7 @@ resource "tls_private_key" "vm" {
 }
 
 resource "vault_kv_secret_v2" "vm_ssh_key_private" {
+  provider = vault.nochild
   for_each = var.vm_config
 
   mount = "kv"
@@ -15,6 +16,7 @@ resource "vault_kv_secret_v2" "vm_ssh_key_private" {
 }
 
 resource "vault_kv_secret_v2" "vm_ssh_key_public" {
+  provider = vault.nochild
   for_each = var.vm_config
 
   mount = "kv"
