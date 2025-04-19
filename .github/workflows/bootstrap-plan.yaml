@@ -103,7 +103,7 @@ jobs:
                 echo "$VAL" | while IFS= read -r line; do
                   [[ -n "$line" ]] && echo "::add-mask::$line"
                 done
-                echo "proxmox_ssh_private_key = \"$ENV_PATH/proxmox.key\"" >> "$ENV_PATH/vault.auto.tfvars"
+                echo 'proxmox_ssh_private_key = "proxmox.key"' >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
       
               proxmox_api_url|proxmox_api_token)
