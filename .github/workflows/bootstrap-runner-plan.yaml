@@ -155,7 +155,8 @@ jobs:
           set -euo pipefail
       
           BRANCH="plan-$ENV_NAME"
-          FILE=".plan-$ENV_NAME"
+          SIGNAL_DIR=".ci-signals"
+          FILE="$SIGNAL_DIR/.plan-$ENV_NAME"
           COMMIT_MSG="🚓 Plan for $ENV_NAME"
           PR_TITLE="🚓 Plan for $ENV_NAME"
           PLAN_PATH="kv/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging"
@@ -182,6 +183,8 @@ jobs:
             "" \
             "🕓 Generated: \`$TIMESTAMP\`")
       
+          mkdir -p "$SIGNAL_DIR"
+      
           if git ls-remote --exit-code --heads origin "$BRANCH" &>/dev/null; then
             echo "🔄 Branch exists, updating..."
             git checkout "$BRANCH"
@@ -203,7 +206,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
           VAULT_ADDR: ${{ env.VAULT_ADDR }}
-        
+
       - name: 🧼 Cleanup
         if: always()
         run: |

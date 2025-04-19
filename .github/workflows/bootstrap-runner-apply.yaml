@@ -4,10 +4,11 @@ name: ✅ Terraform Apply (bootstrap-runner)
 # This workflow is triggered by the bootstrap-runner-plan workflow
 # when a plan is created. It applies the plan to the environment 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+    paths:
+      - '.ci-signals/plan-bootstrap-runner'
     
 jobs:
   bootstrap-apply:
