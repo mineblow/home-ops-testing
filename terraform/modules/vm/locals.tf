@@ -22,10 +22,12 @@ locals {
 
   augmented_tags = {
     for name, cfg in var.vm_config :
-    name => distinct(concat(
-      ["cicd", "os:${lower(local.derived_os_version[name])}", "role:${lower(cfg.role)}"],
-      cfg.tags
-    ))
+    name => distinct([
+      for tag in concat(
+        ["cicd", "os-${local.derived_os_version[name]}", "role-${cfg.role}"],
+        cfg.tags
+      ) : replace(lower(tag), "[^a-z0-9_-]", "-")
+    ])
   }
 
   role_descriptions = {
