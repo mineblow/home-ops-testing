@@ -83,7 +83,7 @@ jobs:
       
           echo "🔐 Fetching Vault secrets..."
       
-          for SECRET in proxmox_api_url proxmox_api_token proxmox_user proxmox_ssh_key consul_state_locking_token consul_state_locking_path; do
+          for SECRET in proxmox_api_url proxmox_api_token proxmox_ssh_user proxmox_ssh_key consul_state_locking_token consul_state_locking_path; do
             VAL=$(vault kv get -field=value "$VAULT_PREFIX/$SECRET" || true)
       
             if [[ -z "$VAL" ]]; then
@@ -92,7 +92,7 @@ jobs:
             fi
       
             case $SECRET in
-              proxmox_user)
+              proxmox_ssh_user)
                 echo "::add-mask::$VAL"
                 printf 'proxmox_ssh_user = "%s"\n' "$VAL" >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
