@@ -106,7 +106,8 @@
             chmod 600 "$ENV_PATH/proxmox.key"
         
             # ✅ Write temp tfvars so the provider can read the key path
-            echo "proxmox_ssh_private_key = \"$ENV_PATH/proxmox.key\"" > "$ENV_PATH/vault.auto.tfvars"
+            ABS_PATH="$(realpath "$ENV_PATH/proxmox.key")"
+            echo "proxmox_ssh_private_key = \"${ABS_PATH}\"" > "$ENV_PATH/vault.auto.tfvars"
         
             # Optional: still add to ssh-agent for manual debug/testing
             eval "$(ssh-agent -s)"
@@ -117,7 +118,9 @@
 
         - name: 🔍 Debug SSH into Proxmox (manual)
           run: ssh -i "$ENV_PATH/proxmox.key" -o StrictHostKeyChecking=no opentofu-bot@192.168.1.49 'echo ✅ Connected'
-          
+
+        - name: 📜 Print vault.auto.tfvars
+          run: cat "$ENV_PATH/vault.auto.tfvars"                  
 
         - name: ✅ Apply tfplan
           run: |
