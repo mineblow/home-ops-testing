@@ -130,6 +130,9 @@ jobs:
           echo "$VM_CONFIG" | while IFS= read -r line; do echo "::add-mask::$line"; done
           echo "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"      
 
+      - name: 📜 Print vault.auto.tfvars
+        run: cat "$ENV_PATH/vault.auto.tfvars" 
+
       - name: 🧊 Run secure tofu plan and store in Vault
         run: bash ./.scripts/cicd/plan-to-vault.sh
         env:
