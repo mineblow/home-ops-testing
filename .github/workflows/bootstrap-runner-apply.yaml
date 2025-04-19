@@ -111,7 +111,11 @@
           env:
             VAULT_ADDR: ${{ env.VAULT_ADDR }}
             VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
-  
+
+        - name: 🔍 Debug SSH into Proxmox (manual)
+          run: ssh -i "$ENV_PATH/proxmox.key" -o StrictHostKeyChecking=no opentofu-bot@192.168.1.49 'echo ✅ Connected'
+          
+
         - name: ✅ Apply tfplan
           run: |
             set -euo pipefail
