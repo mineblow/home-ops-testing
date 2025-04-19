@@ -104,6 +104,10 @@
             PROXMOX_SSH_KEY=$(vault kv get -field=value kv/home-ops/environment/homelab/$ENV_NAME/secrets/proxmox_ssh_key)
             echo "$PROXMOX_SSH_KEY" > "$ENV_PATH/proxmox.key"
             chmod 600 "$ENV_PATH/proxmox.key"
+        
+            # ✅ Start ssh-agent and add key
+            eval "$(ssh-agent -s)"
+            ssh-add "$ENV_PATH/proxmox.key"
           env:
             VAULT_ADDR: ${{ env.VAULT_ADDR }}
             VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
