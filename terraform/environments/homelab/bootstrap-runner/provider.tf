@@ -22,7 +22,7 @@ provider "proxmox" {
 
   ssh {
     username    = var.proxmox_ssh_user
-    private_key = var.proxmox_ssh_private_key
+    private_key = file(var.proxmox_ssh_private_key)
   }
 }
 
