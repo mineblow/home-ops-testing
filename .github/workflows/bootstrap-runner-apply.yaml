@@ -105,7 +105,10 @@
             echo "$PROXMOX_SSH_KEY" > "$ENV_PATH/proxmox.key"
             chmod 600 "$ENV_PATH/proxmox.key"
         
-            # ✅ Start ssh-agent and add key
+            # ✅ Write temp tfvars so the provider can read the key path
+            echo "proxmox_ssh_private_key = \"$ENV_PATH/proxmox.key\"" > "$ENV_PATH/vault.auto.tfvars"
+        
+            # Optional: still add to ssh-agent for manual debug/testing
             eval "$(ssh-agent -s)"
             ssh-add "$ENV_PATH/proxmox.key"
           env:
