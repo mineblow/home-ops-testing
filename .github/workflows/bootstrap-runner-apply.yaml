@@ -123,11 +123,17 @@
           run: |
             set -euo pipefail
             tofu -chdir="$ENV_PATH" init -backend-config=backend-consul.hcl -reconfigure
-            tofu -chdir="$ENV_PATH" apply -auto-approve tfplan
+            tofu -chdir="$ENV_PATH" apply -auto-approve tfplan 2>&1 | tee apply.log
+            EXIT_CODE=${PIPESTATUS[0]}
+            if [[ $EXIT_CODE -ne 0 ]]; then
+              echo "❌ Terraform Apply failed!"
+              cat apply.log
+              exit $EXIT_CODE
+            fi
           env:
             VAULT_ADDR: ${{ env.VAULT_ADDR }}
-            VAULT_TOKEN: ${{ env.VAULT_TOKEN }}        
-  
+            VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+               
         - name: 🧪 Run post-provision Ansible (placeholder)
           run: echo "🌟 Call Ansible here to finish provisioning..."
           # replace with: ansible-playbook -i <inventory> ./ansible/bootstrap-runner.yml or similar
