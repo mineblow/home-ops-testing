@@ -106,8 +106,7 @@
             chmod 600 "$ENV_PATH/proxmox.key"
         
             # ✅ Write temp tfvars so the provider can read the key path
-            ABS_PATH="$(realpath "$ENV_PATH/proxmox.key")"
-            echo "proxmox_ssh_private_key = \"${ABS_PATH}\"" > "$ENV_PATH/vault.auto.tfvars"
+            echo "proxmox_ssh_private_key = \"proxmox.key\"" > "$ENV_PATH/vault.auto.tfvars"
         
             # Optional: still add to ssh-agent for manual debug/testing
             eval "$(ssh-agent -s)"
