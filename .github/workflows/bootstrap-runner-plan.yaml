@@ -1,3 +1,4 @@
+---
 name: 🚀 Terraform Plan (bootstrap-runner)
 
 on:
@@ -19,6 +20,8 @@ jobs:
       ENV_NAME: bootstrap-runner
       ENV_PATH: terraform/environments/homelab/bootstrap-runner
       RUNNER_ENV: github-ci
+      VAULT_VERSION: 1.15.5
+      TOFU_VERSION: 1.6.2
 
     steps:
       - name: 🥦 Checkout repo
@@ -45,25 +48,33 @@ jobs:
         if: ${{ env.RUNNER_ENV == 'self-hosted' }}
         run: bash ./.scripts/cicd/bootstrap/start-tailscale.sh
 
+      - name: 💾 Restore CLI cache
+        uses: actions/cache@v3
+        id: cli-cache
+        with:
+          path: |
+            ~/.opentofu
+            /usr/local/bin/vault
+          key: ${{ runner.os }}-cli-cache-vault-${{ env.VAULT_VERSION }}-tofu-${{ env.TOFU_VERSION }}      
+
       - name: 🛠 Install OpenTofu & Vault CLI
+        if: steps.cli-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
       
-          echo "📦 Installing Vault CLI..."
-          curl -fsSL https://releases.hashicorp.com/vault/1.15.5/vault_1.15.5_linux_amd64.zip -o vault.zip
+          echo "📦 Installing Vault CLI v${VAULT_VERSION}..."
+          curl -fsSL https://releases.hashicorp.com/vault/${VAULT_VERSION}/vault_${VAULT_VERSION}_linux_amd64.zip -o vault.zip
           unzip -q vault.zip
           sudo install vault /usr/local/bin
           vault --version
       
-          echo "📦 Installing OpenTofu..."
+          echo "📦 Installing OpenTofu v${TOFU_VERSION}..."
           curl -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
           chmod +x install-opentofu.sh
-          ./install-opentofu.sh --install-method standalone --opentofu-version 1.6.2
+          ./install-opentofu.sh --install-method standalone --opentofu-version $TOFU_VERSION
           echo "$HOME/.opentofu/bin" >> $GITHUB_PATH
           echo "PATH=$HOME/.opentofu/bin:$PATH" >> $GITHUB_ENV
-          tofu version
-      
-        shell: bash
+          tofu version        
 
       - name: 🔓 Authenticate to Vault
         env:
@@ -130,9 +141,6 @@ jobs:
           echo "$VM_CONFIG" | while IFS= read -r line; do echo "::add-mask::$line"; done
           echo "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"      
 
-      - name: 📜 Print vault.auto.tfvars
-        run: cat "$ENV_PATH/vault.auto.tfvars" 
-
       - name: 🧊 Run secure tofu plan and store in Vault
         run: bash ./.scripts/cicd/plan-to-vault.sh
         env:
@@ -145,19 +153,20 @@ jobs:
       - name: 🚓 Create or update Terraform Plan PR
         run: |
           set -euo pipefail
-
+      
           BRANCH="plan-$ENV_NAME"
           FILE=".plan-$ENV_NAME"
           COMMIT_MSG="🚓 Plan for $ENV_NAME"
+          PR_TITLE="🚓 Plan for $ENV_NAME"
           PLAN_PATH="kv/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging"
           TIMESTAMP="$(TZ='America/Chicago' date +"%B %d, %Y @ %-I:%M %p CT")"
-
+      
           git config --global user.email "opentofu-bot@mineblow.me"
           git config --global user.name "OpenTofu CI Bot"
           git fetch origin
-
+      
           VERSION=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/metadata/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging" | jq -r '.data.current_version // "unknown"')
-
+      
           BODY=$(printf "%s\n" \
             "### 🚓 Terraform Plan for \`$ENV_NAME\`" \
             "" \
@@ -172,7 +181,7 @@ jobs:
             "✅ Merge this PR to trigger apply." \
             "" \
             "🕓 Generated: \`$TIMESTAMP\`")
-
+      
           if git ls-remote --exit-code --heads origin "$BRANCH" &>/dev/null; then
             echo "🔄 Branch exists, updating..."
             git checkout "$BRANCH"
@@ -180,7 +189,7 @@ jobs:
             git add "$FILE"
             git commit -m "$COMMIT_MSG" || echo "ℹ️ Nothing to commit"
             git push origin "$BRANCH" || echo "ℹ️ Nothing to push"
-            gh pr edit "$BRANCH" --body "$BODY"
+            gh pr edit "$BRANCH" --title "$PR_TITLE" --body "$BODY" --add-label "renovate/vm"
           else
             echo "🚀 Creating new branch and PR..."
             git checkout -b "$BRANCH"
@@ -188,14 +197,15 @@ jobs:
             git add "$FILE"
             git commit -m "$COMMIT_MSG"
             git push origin "$BRANCH"
-            gh pr create --title "$COMMIT_MSG" --body "$BODY"
+            gh pr create --title "$PR_TITLE" --body "$BODY" --label "renovate/vm"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
           VAULT_ADDR: ${{ env.VAULT_ADDR }}
-
-      - name: 🩩 Cleanup
+        
+      - name: 🧼 Cleanup
         if: always()
         run: |
-          rm -f vault.json vault.auto.tfvars terraform.auto.tfvars backend-consul.hcl tfplan install-opentofu.sh ${{ env.ENV_PATH }}/proxmox.key || true
+          rm -f vault.json install-opentofu.sh ${{ env.ENV_PATH }}/proxmox.key || true
+          rm -f ${{ env.ENV_PATH }}/vault.auto.tfvars ${{ env.ENV_PATH }}/terraform.auto.tfvars ${{ env.ENV_PATH }}/backend-consul.hcl || true
