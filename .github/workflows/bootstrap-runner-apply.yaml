@@ -172,10 +172,10 @@ jobs:
       - name: 📝 Show generated metadata JSON
         run: |
           echo "=== VM Metadata Files ==="
-          ls -lah metadata/
+          ls -lah terraform/environments/homelab/bootstrap-runner/metadata || echo "❌ No metadata directory"
       
           echo "=== bootstrap-runner metadata ==="
-          cat metadata/bootstrap-runner.json || echo "❌ No metadata found"        
+          cat terraform/environments/homelab/bootstrap-runner/metadata/bootstrap-runner.json || echo "❌ No metadata found"
 
       # - name: 🚀 Run Ansible to configure the VM
       #   run: |
