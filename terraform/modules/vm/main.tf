@@ -109,4 +109,5 @@ module "metadata" {
   vm_config          = var.vm_config
   derived_os_version = local.derived_os_version
   notes              = { for name, cfg in var.vm_config : name => cfg.notes }
+  vm_resources = proxmox_virtual_environment_vm.vm
 }
