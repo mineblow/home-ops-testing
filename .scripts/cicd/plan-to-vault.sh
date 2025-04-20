@@ -14,24 +14,24 @@ echo "📦 Running tofu init..."
 tofu -chdir="$ENV_PATH" init -backend-config=backend-consul.hcl -reconfigure
 
 echo "🧊 Running tofu plan..."
-tofu -chdir="$ENV_PATH" plan -no-color -out=tfplan
+tofu -chdir="$ENV_PATH" plan -no-color -out="$PLAN_FILE"
 
-if [[ ! -f "$PLAN_FILE" ]]; then
-  echo "❌ tfplan not found at $PLAN_FILE"
+if [[ ! -s "$PLAN_FILE" ]]; then
+  echo "❌ tfplan not found or empty at $PLAN_FILE"
   exit 1
 fi
 
 echo "📦 Encoding plan file as base64..."
-ENCODED=$(base64 -w 0 "$PLAN_FILE")
-if [[ -z "$ENCODED" ]]; then
-  echo "❌ Base64 encoding failed or produced empty output"
+ENCODED=$(base64 -w 0 "$PLAN_FILE" || true)
+if [[ -z "${ENCODED:-}" ]]; then
+  echo "❌ Base64 encoding failed or returned empty output"
   exit 1
 fi
 
 echo "🔐 Uploading encoded plan to Vault at: $VAULT_PLAN_PATH"
-vault kv put "$VAULT_PLAN_PATH" plan="$ENCODED" >/dev/null || {
+if ! vault kv put "$VAULT_PLAN_PATH" plan="$ENCODED" >/dev/null; then
   echo "❌ Vault upload failed"
   exit 1
-}
+fi
 
 echo "✅ Plan uploaded successfully to Vault: $VAULT_PLAN_PATH"

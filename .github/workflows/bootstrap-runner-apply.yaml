@@ -9,7 +9,8 @@ on:
       - main
     paths:
       - '.ci-signals/plan-bootstrap-runner'
-    
+  workflow_dispatch:    
+
 jobs:
   bootstrap-apply:
     runs-on: ubuntu-latest
