@@ -150,10 +150,40 @@ jobs:
         env:
           VAULT_ADDR: ${{ env.VAULT_ADDR }}
           VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
-              
-      - name: 🧪 Run post-provision Ansible (placeholder)
-        run: echo "🌟 Call Ansible here to finish provisioning..."
-        # replace with: ansible-playbook -i <inventory> ./ansible/bootstrap-runner.yml or similar
+
+      - name: 🕵️ Fetch GitHub PAT for runner registration
+        run: |
+          export GITHUB_PAT=$(vault kv get -field=pat kv/data/home-ops/global/github/pat_runner_manage)
+          echo "::add-mask::$GITHUB_PAT"
+          echo "GITHUB_PAT=$GITHUB_PAT" >> "$GITHUB_ENV"        
+
+      - name: 🧬 Request GitHub Actions registration token
+        id: runner_token
+        run: |
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: token $GITHUB_PAT" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/mineblow/home-ops-testing/actions/runners/registration-token)
+      
+          TOKEN=$(echo "$RESPONSE" | jq -r .token)
+          echo "::add-mask::$TOKEN"
+          echo "RUNNER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+          - name: 📝 Show generated metadata JSON
+          run: |
+            echo "=== VM Metadata Files ==="
+            ls -lah metadata/
+        
+            echo "=== bootstrap-runner metadata ==="
+            cat metadata/bootstrap-runner.json || echo "❌ No metadata found"        
+
+      # - name: 🚀 Run Ansible to configure the VM
+      #   run: |
+      #     ansible-playbook -i "${VM_IP}," \
+      #       -u ubuntu \
+      #       --private-key ./proxmox_vm.key \
+      #       playbooks/provision-vm.yaml \
+      #       --extra-vars "env_name=bootstrap-runner vault_addr=$VAULT_ADDR vault_token=$VAULT_TOKEN bootstrap_user=ubuntu github_runner_token=$RUNNER_TOKEN"
 
       - name: 🧼 Cleanup
         if: always()

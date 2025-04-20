@@ -1,0 +1,8 @@
+---
+- name: Stub for Ubuntu 24.04 (no-op)
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: No-op placeholder
+      debug:
+        msg: "Ubuntu 24.04 playbook stub hit. No tasks defined yet."

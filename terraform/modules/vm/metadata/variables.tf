@@ -9,3 +9,8 @@ variable "derived_os_version" {
 variable "notes" {
   type = map(string)
 }
+
+variable "vm_resources" {
+  description = "Map of VM resources by name"
+  type        = any
+}

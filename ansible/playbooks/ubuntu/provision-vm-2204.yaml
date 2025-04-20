@@ -1,0 +1,21 @@
+---
+- name: Provision Ubuntu 22.04 VM
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    ansible_become_exe: sudo
+    ansible_become_flags: "-H -n"
+  
+  tasks:
+    - name: Log provisioning start
+      debug:
+        msg: "🧱 Starting Ubuntu 22.04 provisioning for {{ env_name }} on {{ inventory_hostname }}"
+
+    - name: Apply environment-specific role (e.g., bootstrap-runner)
+      include_role:
+        name: "{{ env_name }}"
+
+    - name: Apply hardening (Ubuntu-specific)
+      include_role:
+        name: harden_ubuntu
