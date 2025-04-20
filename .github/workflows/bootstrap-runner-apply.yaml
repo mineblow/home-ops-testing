@@ -55,14 +55,14 @@ jobs:
         if: ${{ env.RUNNER_ENV == 'self-hosted' }}
         run: bash ./.scripts/cicd/bootstrap/start-tailscale.sh
 
-      - name: 💾 Restore CLI cache
-        uses: actions/cache@v3
-        id: cli-cache
-        with:
-          path: |
-            ~/.opentofu
-            /usr/local/bin/vault
-          key: ${{ runner.os }}-cli-cache-vault-${{ env.VAULT_VERSION }}-tofu-${{ env.TOFU_VERSION }}      
+      # - name: 💾 Restore CLI cache
+      #   uses: actions/cache@v3
+      #   id: cli-cache
+      #   with:
+      #     path: |
+      #       ~/.opentofu
+      #       /usr/local/bin/vault
+      #     key: ${{ runner.os }}-cli-cache-vault-${{ env.VAULT_VERSION }}-tofu-${{ env.TOFU_VERSION }}      
 
       - name: 💠 Install OpenTofu & Vault CLI
 #       if: steps.cli-cache.outputs.cache-hit != 'true'
@@ -138,14 +138,20 @@ jobs:
           VAULT_ADDR: ${{ env.VAULT_ADDR }}
           VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
 
-      - name: 🧊 Run secure tofu plan and store in Vault
-        run: bash ./.scripts/cicd/plan-to-vault.sh
+      - name: ✅ Apply tfplan
+        run: |
+          set -euo pipefail
+          tofu -chdir="$ENV_PATH" init -backend-config=backend-consul.hcl -reconfigure
+          tofu -chdir="$ENV_PATH" apply -auto-approve tfplan 2>&1 | tee apply.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          if [[ $EXIT_CODE -ne 0 ]]; then
+            echo "❌ Terraform Apply failed!"
+            cat apply.log
+            exit $EXIT_CODE
+          fi
         env:
-          ENV_NAME: ${{ env.ENV_NAME }}
-          ENV_PATH: ${{ env.ENV_PATH }}
           VAULT_ADDR: ${{ env.VAULT_ADDR }}
           VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
-          VAULT_PLAN_PATH: kv/home-ops/environment/homelab/${{ env.ENV_NAME }}/opentofu/plans/staging
               
       - name: 🧪 Run post-provision Ansible (placeholder)
         run: echo "🌟 Call Ansible here to finish provisioning..."

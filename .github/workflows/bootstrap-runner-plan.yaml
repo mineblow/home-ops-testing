@@ -48,14 +48,14 @@ jobs:
         if: ${{ env.RUNNER_ENV == 'self-hosted' }}
         run: bash ./.scripts/cicd/bootstrap/start-tailscale.sh
 
-      - name: 💾 Restore CLI cache
-        uses: actions/cache@v3
-        id: cli-cache
-        with:
-          path: |
-            ~/.opentofu
-            /usr/local/bin/vault
-          key: ${{ runner.os }}-cli-cache-vault-${{ env.VAULT_VERSION }}-tofu-${{ env.TOFU_VERSION }}      
+      # - name: 💾 Restore CLI cache
+      #   uses: actions/cache@v3
+      #   id: cli-cache
+      #   with:
+      #     path: |
+      #       ~/.opentofu
+      #       /usr/local/bin/vault
+      #     key: ${{ runner.os }}-cli-cache-vault-${{ env.VAULT_VERSION }}-tofu-${{ env.TOFU_VERSION }}      
 
       - name: 🛠 Install OpenTofu & Vault CLI
 #        if: steps.cli-cache.outputs.cache-hit != 'true'
