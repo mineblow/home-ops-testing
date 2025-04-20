@@ -111,7 +111,7 @@ module "metadata" {
   notes              = { for name, cfg in var.vm_config : name => cfg.notes }
   vm_resources       = { for name, vm in proxmox_virtual_environment_vm.vm : name => {
     role            = var.vm_config[name].role
-    vmid            = vm.vmid
+    vmid            = vm.vm_id
     ipv4_addresses  = vm.ipv4_addresses
   } }
 }
