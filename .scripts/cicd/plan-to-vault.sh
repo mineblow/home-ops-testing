@@ -10,6 +10,12 @@ set -euo pipefail
 
 PLAN_FILE="${ENV_PATH}/tfplan"
 
+# 🛡️ Ensure tfplan is not a directory (OpenTofu can't write to it)
+if [[ -d "$PLAN_FILE" ]]; then
+  echo "❌ $PLAN_FILE exists as a directory – removing it"
+  rm -rf "$PLAN_FILE"
+fi
+
 echo "📦 Running tofu init..."
 tofu -chdir="$ENV_PATH" init -backend-config=backend-consul.hcl -reconfigure
 
