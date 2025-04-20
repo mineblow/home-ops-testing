@@ -10,6 +10,12 @@ set -euo pipefail
 
 PLAN_FILE="${ENV_PATH}/tfplan"
 
+echo "📂 ENV_PATH contents:"
+ls -lah "$ENV_PATH"
+echo "pwd"
+pwd
+
+
 # 🛡️ Ensure tfplan is not a directory (OpenTofu can't write to it)
 if [[ -d "$PLAN_FILE" ]]; then
   echo "❌ $PLAN_FILE exists as a directory – removing it"
