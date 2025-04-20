@@ -169,13 +169,13 @@ jobs:
           echo "::add-mask::$TOKEN"
           echo "RUNNER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
-          - name: 📝 Show generated metadata JSON
-          run: |
-            echo "=== VM Metadata Files ==="
-            ls -lah metadata/
-        
-            echo "=== bootstrap-runner metadata ==="
-            cat metadata/bootstrap-runner.json || echo "❌ No metadata found"        
+      - name: 📝 Show generated metadata JSON
+        run: |
+          echo "=== VM Metadata Files ==="
+          ls -lah metadata/
+      
+          echo "=== bootstrap-runner metadata ==="
+          cat metadata/bootstrap-runner.json || echo "❌ No metadata found"        
 
       # - name: 🚀 Run Ansible to configure the VM
       #   run: |
