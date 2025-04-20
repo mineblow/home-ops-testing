@@ -15,8 +15,6 @@ jobs:
   bootstrap-apply:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-#    if: github.actor == 'github-actions[bot]' &&
-#        contains(github.event.head_commit.message, '🚓 Plan for bootstrap-runner')
 
     permissions:
       contents: read
