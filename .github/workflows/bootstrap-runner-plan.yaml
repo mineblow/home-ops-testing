@@ -194,16 +194,14 @@ jobs:
             git push origin "$BRANCH" || echo "ℹ️ Nothing to push"
       
             echo "🕵️ Checking for existing PR on branch..."
-            EXISTING_PR=$(gh pr list --head "$BRANCH" --state all --json number,state -q '.[0]')
-            PR_NUMBER=$(echo "$EXISTING_PR" | jq -r '.number // empty')
-            PR_STATE=$(echo "$EXISTING_PR" | jq -r '.state // empty')
+            PR_URL=$(gh pr list --state all --head "$BRANCH" --json number,state --jq '.[0].number')
+            PR_STATE=$(gh pr list --state all --head "$BRANCH" --json number,state --jq '.[0].state')
       
-            if [[ "$PR_STATE" == "CLOSED" && -n "$PR_NUMBER" ]]; then
-              echo "♻️ Reopening previously closed PR #$PR_NUMBER..."
-              gh pr reopen "$PR_NUMBER"
+            if [[ "$PR_STATE" == "closed" ]]; then
+              echo "🔁 Reopening previously closed PR #$PR_URL"
+              gh pr reopen "$PR_URL"
             fi
       
-            echo "📝 Updating PR title and body..."
             gh pr edit "$BRANCH" --title "$PR_TITLE" --body "$BODY" --add-label "renovate/vm"
           else
             echo "🚀 Creating new branch and PR..."
@@ -217,7 +215,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
-          VAULT_ADDR: ${{ env.VAULT_ADDR }}        
+          VAULT_ADDR: ${{ env.VAULT_ADDR }}             
 
       - name: 🧼 Cleanup
         if: always()
