@@ -194,12 +194,13 @@ jobs:
             git push origin "$BRANCH" || echo "ℹ️ Nothing to push"
 
             echo "🕵️ Checking for existing PR on branch..."
-            PR_NUMBER=$(gh pr list --state all --head "$BRANCH" --json number,state --jq '.[0].number')
-            PR_STATE=$(gh pr list --state all --head "$BRANCH" --json number,state --jq '.[0].state')
+            EXISTING_PR=$(gh pr list --state all --head "$BRANCH" --json number,state --jq '.[0]')
+            PR_NUMBER=$(echo "$EXISTING_PR" | jq -r '.number')
+            PR_STATE=$(echo "$EXISTING_PR" | jq -r '.state')
 
-            if [[ "$PR_STATE" == "closed" ]]; then
-              echo "🔁 Reopening previously closed PR #$PR_NUMBER"
-              gh pr reopen "$PR_NUMBER"
+            if [[ "$PR_STATE" == "closed" || "$PR_STATE" == "CLOSED" ]]; then
+              echo "🔁 Forcing reopen of closed PR #$PR_NUMBER"
+              gh api -X PATCH "repos/${{ github.repository }}/pulls/$PR_NUMBER" -f state=open
             fi
 
             echo "📝 Updating PR title and body..."
