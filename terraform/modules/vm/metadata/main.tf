@@ -1,5 +1,5 @@
 resource "local_file" "metadata" {
-  for_each = proxmox_virtual_environment_vm.vm
+  for_each = var.vm_resources
 
   filename = "${path.root}/metadata/${each.key}.json"
   content = jsonencode({

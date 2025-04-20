@@ -11,6 +11,9 @@ variable "notes" {
 }
 
 variable "vm_resources" {
-  description = "Map of VM resources by name"
-  type        = any
+  type = map(object({
+    role           = string
+    vmid           = number
+    ipv4_addresses = list(list(string))
+  }))
 }
