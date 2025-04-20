@@ -153,7 +153,7 @@ jobs:
       - name: 🚓 Create or update Terraform Plan PR
         run: |
           set -euo pipefail
-      
+
           BRANCH="plan-$ENV_NAME"
           SIGNAL_DIR=".ci-signals"
           FILE="$SIGNAL_DIR/.plan-$ENV_NAME"
@@ -161,13 +161,13 @@ jobs:
           PR_TITLE="🚓 Plan for $ENV_NAME"
           PLAN_PATH="kv/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging"
           TIMESTAMP="$(TZ='America/Chicago' date +"%B %d, %Y @ %-I:%M %p CT")"
-      
+
           git config --global user.email "opentofu-bot@mineblow.me"
           git config --global user.name "OpenTofu CI Bot"
           git fetch origin
-      
+
           VERSION=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/metadata/home-ops/environment/homelab/$ENV_NAME/opentofu/plans/staging" | jq -r '.data.current_version // "unknown"')
-      
+
           BODY=$(printf "%s\n" \
             "### 🚓 Terraform Plan for \`$ENV_NAME\`" \
             "" \
@@ -182,9 +182,9 @@ jobs:
             "✅ Merge this PR to trigger apply." \
             "" \
             "🕓 Generated: \`$TIMESTAMP\`")
-      
+
           mkdir -p "$SIGNAL_DIR"
-      
+
           if git ls-remote --exit-code --heads origin "$BRANCH" &>/dev/null; then
             echo "🔄 Branch exists, updating..."
             git checkout "$BRANCH"
@@ -192,17 +192,18 @@ jobs:
             git add "$FILE"
             git commit -m "$COMMIT_MSG" || echo "ℹ️ Nothing to commit"
             git push origin "$BRANCH" || echo "ℹ️ Nothing to push"
-      
+
             echo "🕵️ Checking for existing PR on branch..."
-            PR_URL=$(gh pr list --state all --head "$BRANCH" --json number,state --jq '.[0].number')
+            PR_NUMBER=$(gh pr list --state all --head "$BRANCH" --json number,state --jq '.[0].number')
             PR_STATE=$(gh pr list --state all --head "$BRANCH" --json number,state --jq '.[0].state')
-      
+
             if [[ "$PR_STATE" == "closed" ]]; then
-              echo "🔁 Reopening previously closed PR #$PR_URL"
-              gh pr reopen "$PR_URL"
+              echo "🔁 Reopening previously closed PR #$PR_NUMBER"
+              gh pr reopen "$PR_NUMBER"
             fi
-      
-            gh pr edit "$BRANCH" --title "$PR_TITLE" --body "$BODY" --add-label "renovate/vm"
+
+            echo "📝 Updating PR title and body..."
+            gh pr edit "$PR_NUMBER" --title "$PR_TITLE" --body "$BODY" --add-label "renovate/vm"
           else
             echo "🚀 Creating new branch and PR..."
             git checkout -b "$BRANCH"
@@ -215,7 +216,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
-          VAULT_ADDR: ${{ env.VAULT_ADDR }}             
+          VAULT_ADDR: ${{ env.VAULT_ADDR }}              
 
       - name: 🧼 Cleanup
         if: always()
