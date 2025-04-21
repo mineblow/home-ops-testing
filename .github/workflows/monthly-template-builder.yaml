@@ -70,11 +70,40 @@
           run: |
             set -euo pipefail
   
-            echo "🔑 Fetching SSH key"
-            vault kv get -field=value kv/home-ops/environment/homelab/template-builder/secrets/proxmox_ssh_key_private > proxmox.key
+            SECRET_PATH="kv/home-ops/environment/homelab/template-builder/secrets/proxmox_ssh_key_private"
+            echo "🔑 Fetching SSH key from Vault: $SECRET_PATH"
+            
+            vault kv get -field=value "$SECRET_PATH" > proxmox.key
+        
+            echo ""
+            echo "🔐 Masking key contents line by line..."
+            while IFS= read -r line; do
+              echo "::add-mask::$line"
+            done < proxmox.key
+        
+            echo ""
+            echo "🔧 Setting permissions on key file"
             chmod 600 proxmox.key
-            while IFS= read -r line; do echo "::add-mask::$line"; done < proxmox.key
-            ssh-keygen -y -f proxmox.key >/dev/null
+        
+            echo ""
+            echo "🕵️ File type of key:"
+            file proxmox.key
+        
+            echo ""
+            echo "📏 Line count of key:"
+            wc -l proxmox.key
+        
+            echo ""
+            echo "📦 Preview of key content:"
+            head -n 5 proxmox.key
+        
+            echo ""
+            echo "🔬 Hexdump preview:"
+            hexdump -C proxmox.key | head -n 20
+        
+            echo ""
+            echo "🧪 ssh-keygen validation..."
+            ssh-keygen -y -f proxmox.key >/dev/null && echo "✅ ssh-keygen succeeded" || echo "❌ ssh-keygen failed"
             
             echo "🔑 Fetching SSH user + domain"
             PROXMOX_SSH_USER=$(vault kv get -field=value kv/home-ops/global/proxmox/proxmox_ssh_user)
