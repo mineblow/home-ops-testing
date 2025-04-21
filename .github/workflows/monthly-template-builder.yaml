@@ -1,117 +1,105 @@
 ---
-name: 🏗️ Monthly Proxmox Template Builder
+  name: 🏗️ Monthly Proxmox Template Builder
+  
+  on:
+    schedule:
+      - cron: '0 5 1 * *'
+    workflow_dispatch:
+  
+  jobs:
+    detect-templates:
+      runs-on: ubuntu-latest
+      outputs:
+        templates: ${{ steps.set.outputs.templates }}
+      steps:
+        - name: 📎 Checkout repo
+          uses: actions/checkout@v4
+  
+        - id: set
+          run: |
+            files=$(find .scripts/cicd/templates -type f -name '*-template.sh' -exec basename {} \;)
+            echo "Found templates: $files"
+            json=$(jq -nc --argjson arr "$(printf '%s\n' $files | jq -R . | jq -s .)" '$arr')
+            echo "templates=$json" >> "$GITHUB_OUTPUT"
+  
+    build-template:
+      needs: detect-templates
+      runs-on: ubuntu-latest
+      strategy:
+        matrix:
+          template: ${{ fromJson(needs.detect-templates.outputs.templates) }}
+  
+      env:
+        VAULT_ROLE: template-builder-ci
+  
+      steps:
+        - name: 📎 Checkout repo
+          uses: actions/checkout@v4
+  
+        - name: 🔐 Authenticate to Google Cloud
+          uses: google-github-actions/auth@v1
+          with:
+            credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+  
+        - name: 🧠 Extract Vault bootstrap from GCP
+          run: bash ./.scripts/cicd/bootstrap/auth-google.sh
+  
+        - name: 🌐 Start Tailscale (GitHub-hosted)
+          uses: tailscale/github-action@v2
+          with:
+            oauth-client-id: ${{ env.TAILSCALE_CLIENT_ID }}
+            oauth-secret: ${{ env.TAILSCALE_CLIENT_SECRET }}
+            hostname: template-builder-ci
+            tags: tag:github-ci
+  
+        - name: 💠 Install Vault CLI
+          run: bash .scripts/cicd/bootstrap/install-vault.sh
+  
+        - name: 🔓 Authenticate to Vault
+          run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
+          env:
+            VAULT_ROLE: ${{ env.VAULT_ROLE }}
+  
+        - name: 🔐 Fetch Proxmox secrets from Vault
+          run: |
+            set -euo pipefail
+  
+            echo "🔑 Fetching SSH key"
+            vault kv get -field=value kv/home-ops/environment/homelab/template-builder/secrets/proxmox_ssh_key_private > proxmox.key
+            chmod 600 proxmox.key
+            while IFS= read -r line; do echo "::add-mask::$line"; done < proxmox.key
+  
+            echo "🔑 Fetching SSH user + domain"
+            PROXMOX_SSH_USER=$(vault kv get -field=value kv/home-ops/global/proxmox/proxmox_ssh_user)
+            PROXMOX_DOMAIN=$(vault kv get -field=value kv/home-ops/global/proxmox/domain)
+            echo "::add-mask::$PROXMOX_SSH_USER"
+            echo "::add-mask::$PROXMOX_DOMAIN"
+            echo "PROXMOX_SSH_USER=$PROXMOX_SSH_USER" >> "$GITHUB_ENV"
+            echo "PROXMOX_DOMAIN=$PROXMOX_DOMAIN" >> "$GITHUB_ENV"
+          env:
+            VAULT_ADDR: ${{ env.VAULT_ADDR }}
+            VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+  
+        - name: 📤 Copy script to Proxmox host
+          run: |
+            scp -i proxmox.key -o StrictHostKeyChecking=no \
+              ".scripts/cicd/templates/${{ matrix.template }}" \
+              $PROXMOX_SSH_USER@$PROXMOX_DOMAIN:/home/$PROXMOX_SSH_USER/scripts/
+  
+            ssh -i proxmox.key -o StrictHostKeyChecking=no \
+              $PROXMOX_SSH_USER@$PROXMOX_DOMAIN \
+              "sudo -n chmod +x /home/$PROXMOX_SSH_USER/scripts/${{ matrix.template }}"
+  
+        - name: 🚀 Execute and delete script on Proxmox host
+          run: |
+            set -euo pipefail
+            SCRIPT_NAME=${{ matrix.template }}
+  
+            echo "🚀 Running $SCRIPT_NAME remotely on $PROXMOX_DOMAIN"
+            ssh -i proxmox.key -o StrictHostKeyChecking=no "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN" \
+              "bash -c 'set -euo pipefail && sudo -n /home/$PROXMOX_SSH_USER/scripts/$SCRIPT_NAME && rm -f /home/$PROXMOX_SSH_USER/scripts/$SCRIPT_NAME'"
 
-on:
-  schedule:
-    - cron: '0 5 1 * *'  # 1st of every month @ 5AM UTC
-  workflow_dispatch:
-    inputs: {}
-
-jobs:
-  build-templates:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write  # Required for OIDC → Vault login
-
-    env:
-      PROXMOX_HOST: proxmox.mineblow.me
-
-    steps:
-      - name: 📎 Checkout repo
-        uses: actions/checkout@v4
-
-      - name: 🔐 Authenticate to Google Cloud
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
-
-      - name: 🧠 Extract Vault bootstrap from GCP
-        run: bash ./.scripts/cicd/bootstrap/auth-google.sh
-
-      - name: 🌐 Start Tailscale (GitHub-hosted)
-        if: ${{ env.RUNNER_ENV != 'self-hosted' }}
-        uses: tailscale/github-action@v2
-        with:
-          oauth-client-id: ${{ env.TAILSCALE_CLIENT_ID }}
-          oauth-secret: ${{ env.TAILSCALE_CLIENT_SECRET }}
-          hostname: github-bootstrap-plan
-          tags: tag:github-ci
-
-      - name: 🌐 Start Tailscale (self-hosted)
-        if: ${{ env.RUNNER_ENV == 'self-hosted' }}
-        run: bash ./.scripts/cicd/bootstrap/start-tailscale.sh
-
-      - name: 🔓 Authenticate to Vault
-        env:
-          VAULT_ROLE: bootstrap-runner-ci
-        run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
-
-      - name: 🔑 Fetch and validate SSH key from Vault
-        run: |
-          set -euo pipefail
-
-          SECRET_PATH="kv/data/home-ops/proxmox/automation_ssh_key"
-          curl -s -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/$SECRET_PATH" \
-            | jq -r '.data.data.value' > proxmox.key
-
-          chmod 600 proxmox.key
-          ssh-keygen -y -f proxmox.key >/dev/null
-
-      - name: 📤 Copy all builder scripts to Proxmox host
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-
-          scripts=(.scripts/*template.sh)
-
-          if [[ ${#scripts[@]} -eq 0 ]]; then
-            echo "❌ No matching template scripts found in .scripts/"
-            exit 1
-          fi
-
-          for script in "${scripts[@]}"; do
-            echo "📤 Copying $script"
-            scp -i proxmox.key -o StrictHostKeyChecking=no "$script" auto@$PROXMOX_HOST:/home/auto/scripts/ || {
-              echo "❌ SCP failed for $script"
-              exit 1
-            }
-
-            ssh -o BatchMode=yes -i proxmox.key -o StrictHostKeyChecking=no auto@$PROXMOX_HOST \
-              "sudo -n chmod +x /home/auto/scripts/$(basename "$script")" || {
-                echo "❌ chmod failed for $script"
-                exit 1
-              }
-          done
-
-      - name: 🚀 Execute all builder scripts
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-
-          scripts=(.scripts/*template.sh)
-
-          if [[ ${#scripts[@]} -eq 0 ]]; then
-            echo "❌ No matching template scripts found in .scripts/"
-            exit 1
-          fi
-
-          for script in "${scripts[@]}"; do
-            name=$(basename "$script")
-            echo "🚀 Running $name"
-            ssh -o BatchMode=yes -i proxmox.key -o StrictHostKeyChecking=no auto@$PROXMOX_HOST \
-              "set -euo pipefail; sudo -n /home/auto/scripts/$name" || {
-                echo "❌ $name failed"
-                exit 1
-              }
-          done
-
-      # - name: 📜 Save logs or metadata (optional)
-      #   if: always()
-      #   run: |
-      #     echo "📝 TODO: Save build logs or output JSON to Vault/GCS"
-
-      - name: 🧹 Cleanup
-        if: always()
-        run: |
-          rm -f proxmox.key vault.json
+        - name: 🧹 Cleanup
+          if: always()
+          run: rm -f proxmox.key vault.json
+  
