@@ -195,11 +195,31 @@ jobs:
           ENV_PATH: ${{ env.ENV_PATH }}
           ENV_NAME: ${{ env.ENV_NAME }}        
 
-      - name: 🕵️ Fetch GitHub PAT for runner registration
+      - name: 🕵️ Fetch GitHub PAT, VM SSH key, and VM metadata for Ansible
         run: |
-          export GITHUB_PAT=$(vault kv get -field=value kv/home-ops/global/github/pat_runner_manage)
+          set -euo pipefail
+      
+          echo "🔑 Fetching GitHub PAT"
+          GITHUB_PAT=$(vault kv get -field=value kv/home-ops/global/github/pat_runner_manage)
           echo "::add-mask::$GITHUB_PAT"
-          echo "GITHUB_PAT=$GITHUB_PAT" >> "$GITHUB_ENV"        
+          echo "GITHUB_PAT=$GITHUB_PAT" >> "$GITHUB_ENV"
+      
+          echo "🔑 Fetching VM SSH private key"
+          VM_SSH_KEY=$(vault kv get -field=value kv/home-ops/environment/homelab/$ENV_NAME/secrets/vm_ssh_key_private)
+          echo "::add-mask::$VM_SSH_KEY"
+          echo "$VM_SSH_KEY" > "$ENV_PATH/proxmox_vm.key"
+          chmod 600 "$ENV_PATH/proxmox_vm.key"
+      
+          echo "📦 Fetching VM metadata (role + ip)"
+          VM_ROLE=$(vault kv get -field=role kv/home-ops/environment/homelab/$ENV_NAME/opentofu/metadata)
+          VM_IP=$(vault kv get -field=ip kv/home-ops/environment/homelab/$ENV_NAME/opentofu/metadata)
+          echo "::add-mask::$VM_ROLE"
+          echo "::add-mask::$VM_IP"
+          echo "VM_ROLE=$VM_ROLE" >> "$GITHUB_ENV"
+          echo "VM_IP=$VM_IP" >> "$GITHUB_ENV"
+        env:
+          VAULT_ADDR: ${{ env.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}              
 
       - name: 🧬 Request GitHub Actions registration token
         id: runner_token
@@ -213,13 +233,13 @@ jobs:
           echo "::add-mask::$TOKEN"
           echo "RUNNER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
-      # - name: 🚀 Run Ansible to configure the VM
-      #   run: |
-      #     ansible-playbook -i "${VM_IP}," \
-      #       -u ubuntu \
-      #       --private-key ./proxmox_vm.key \
-      #       ansible/playbooks/provision-vm.yaml \
-      #       --extra-vars "env_name=bootstrap-runner vault_addr=$VAULT_ADDR vault_token=$VAULT_TOKEN bootstrap_user=ubuntu github_runner_token=$RUNNER_TOKEN"
+      - name: 🚀 Run Ansible to configure the VM
+        run: |
+          ansible-playbook -i "${VM_IP}," \
+            -u ubuntu \
+            --private-key ./proxmox_vm.key \
+            ansible/playbooks/provision-vm.yaml \
+            --extra-vars "env_name=bootstrap-runner vault_addr=$VAULT_ADDR vault_token=$VAULT_TOKEN bootstrap_user=ubuntu github_runner_token=$RUNNER_TOKEN"
 
       - name: 🧼 Cleanup
         if: always()
