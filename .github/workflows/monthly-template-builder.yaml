@@ -27,74 +27,25 @@ jobs:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
 
       - name: 🧠 Extract Vault bootstrap from GCP
-        run: |
-          set -euo pipefail
+        run: bash ./.scripts/cicd/bootstrap/auth-google.sh
 
-          RAW=$(gcloud secrets versions access latest --secret=vault_bootstrap)
-          echo "$RAW" > vault.json
-
-          REQUIRED_KEYS=(vault_addr vault_role oauth_client_id oauth_client_secret)
-          for key in "${REQUIRED_KEYS[@]}"; do
-            VALUE=$(jq -r ."$key" vault.json)
-            if [[ "$VALUE" == "null" || -z "$VALUE" ]]; then
-              echo "❌ Missing $key in vault.json"
-              exit 1
-            fi
-          done
-
-          export VAULT_ADDR=$(jq -r .vault_addr vault.json)
-          export VAULT_ROLE=$(jq -r .vault_role vault.json)
-          export CLIENT_ID=$(jq -r .oauth_client_id vault.json)
-          export CLIENT_SECRET=$(jq -r .oauth_client_secret vault.json)
-
-          echo "::add-mask::$VAULT_ADDR"
-          echo "::add-mask::$CLIENT_ID"
-          echo "::add-mask::$CLIENT_SECRET"
-
-          echo "VAULT_ADDR=$VAULT_ADDR" >> "$GITHUB_ENV"
-          echo "VAULT_ROLE=$VAULT_ROLE" >> "$GITHUB_ENV"
-          echo "TAILSCALE_CLIENT_ID=$CLIENT_ID" >> "$GITHUB_ENV"
-          echo "TAILSCALE_CLIENT_SECRET=$CLIENT_SECRET" >> "$GITHUB_ENV"
-
-      - name: 🌐 Start Tailscale
+      - name: 🌐 Start Tailscale (GitHub-hosted)
+        if: ${{ env.RUNNER_ENV != 'self-hosted' }}
         uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ env.TAILSCALE_CLIENT_ID }}
           oauth-secret: ${{ env.TAILSCALE_CLIENT_SECRET }}
-          hostname: template-runner
+          hostname: github-bootstrap-plan
           tags: tag:github-ci
 
-      - name: 🌐 Wait for Tailscale to connect
-        run: |
-          for i in {1..5}; do
-            if tailscale status >/dev/null 2>&1; then
-              break
-            fi
-            echo "⏳ Waiting for Tailscale..."
-            sleep 5
-          done
+      - name: 🌐 Start Tailscale (self-hosted)
+        if: ${{ env.RUNNER_ENV == 'self-hosted' }}
+        run: bash ./.scripts/cicd/bootstrap/start-tailscale.sh
 
-      - name: 🔓 Authenticate to Vault (OIDC)
-        run: |
-          set -euo pipefail
-
-          JWT=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-                      "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
-
-          RESPONSE=$(curl -s --request POST \
-            --data "{\"jwt\":\"$JWT\",\"role\":\"${VAULT_ROLE}\"}" \
-            "$VAULT_ADDR/v1/auth/jwt/login")
-
-          VAULT_TOKEN=$(echo "$RESPONSE" | jq -r .auth.client_token)
-
-          if [[ "$VAULT_TOKEN" == "null" || -z "$VAULT_TOKEN" ]]; then
-            echo "❌ Vault login failed"
-            echo "$RESPONSE"
-            exit 1
-          fi
-
-          echo "::add-mask::$VAULT_TOKEN"
-          echo "VAULT_TOKEN=$VAULT_TOKEN" >> "$GITHUB_ENV"
+      - name: 🔓 Authenticate to Vault
+        env:
+          VAULT_ROLE: bootstrap-runner-ci
+        run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
 
       - name: 🔑 Fetch and validate SSH key from Vault
         run: |
