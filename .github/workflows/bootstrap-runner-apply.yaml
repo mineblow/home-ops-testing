@@ -213,13 +213,13 @@ jobs:
           echo "::add-mask::$TOKEN"
           echo "RUNNER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
-      - name: 🚀 Run Ansible to configure the VM
-        run: |
-          ansible-playbook -i "${VM_IP}," \
-            -u ubuntu \
-            --private-key ./proxmox_vm.key \
-            playbooks/provision-vm.yaml \
-            --extra-vars "env_name=bootstrap-runner vault_addr=$VAULT_ADDR vault_token=$VAULT_TOKEN bootstrap_user=ubuntu github_runner_token=$RUNNER_TOKEN"
+      # - name: 🚀 Run Ansible to configure the VM
+      #   run: |
+      #     ansible-playbook -i "${VM_IP}," \
+      #       -u ubuntu \
+      #       --private-key ./proxmox_vm.key \
+      #       ansible/playbooks/provision-vm.yaml \
+      #       --extra-vars "env_name=bootstrap-runner vault_addr=$VAULT_ADDR vault_token=$VAULT_TOKEN bootstrap_user=ubuntu github_runner_token=$RUNNER_TOKEN"
 
       - name: 🧼 Cleanup
         if: always()
