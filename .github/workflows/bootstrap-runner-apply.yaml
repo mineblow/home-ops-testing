@@ -238,6 +238,7 @@ jobs:
           ansible-playbook -i "${VM_IP}," \
             -u ubuntu \
             --private-key ./proxmox_vm.key \
+            --ssh-common-args "-o StrictHostKeyChecking=no" \
             ansible/playbooks/provision-vm.yaml \
             --extra-vars "env_name=bootstrap-runner vault_addr=$VAULT_ADDR vault_token=$VAULT_TOKEN bootstrap_user=ubuntu github_runner_token=$RUNNER_TOKEN"
 
