@@ -74,7 +74,8 @@
             vault kv get -field=value kv/home-ops/environment/homelab/template-builder/secrets/proxmox_ssh_key_private > proxmox.key
             chmod 600 proxmox.key
             while IFS= read -r line; do echo "::add-mask::$line"; done < proxmox.key
-  
+            ssh-keygen -y -f proxmox.key >/dev/null
+            
             echo "🔑 Fetching SSH user + domain"
             PROXMOX_SSH_USER=$(vault kv get -field=value kv/home-ops/global/proxmox/proxmox_ssh_user)
             PROXMOX_DOMAIN=$(vault kv get -field=value kv/home-ops/global/proxmox/domain)
