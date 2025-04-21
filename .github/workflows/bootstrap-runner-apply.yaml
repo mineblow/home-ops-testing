@@ -90,19 +90,24 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$ENV_PATH"
-
+      
           LOCK_PATH=$(vault kv get -field=value kv/home-ops/environment/homelab/$ENV_NAME/secrets/consul_state_locking_path)
           LOCK_TOKEN=$(vault kv get -field=value kv/home-ops/environment/homelab/$ENV_NAME/secrets/consul_state_locking_token)
           CONSUL_DOMAIN=$(vault kv get -field=value kv/home-ops/consul/domain | sed 's:/*$::')
-
+      
+          # Mask secrets
+          echo "::add-mask::$LOCK_PATH"
+          echo "::add-mask::$LOCK_TOKEN"
+          echo "::add-mask::$CONSUL_DOMAIN"
+      
           echo "path = \"$LOCK_PATH\"" > "$ENV_PATH/backend-consul.hcl"
           echo "address = \"$CONSUL_DOMAIN\"" >> "$ENV_PATH/backend-consul.hcl"
-
+      
           echo "CONSUL_HTTP_ADDR=$CONSUL_DOMAIN" >> $GITHUB_ENV
           echo "CONSUL_HTTP_TOKEN=$LOCK_TOKEN" >> $GITHUB_ENV
         env:
           VAULT_ADDR: ${{ env.VAULT_ADDR }}
-          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}      
 
       - name: 📅 Fetch and decode tfplan from Vault
         run: |
@@ -151,6 +156,45 @@ jobs:
           VAULT_ADDR: ${{ env.VAULT_ADDR }}
           VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
 
+      - name: 📤 Push VM metadata to Vault
+        run: |
+          set -euo pipefail
+      
+          METADATA_FILE="$ENV_PATH/metadata/$ENV_NAME.json"
+          VAULT_PATH="kv/home-ops/environment/homelab/$ENV_NAME/opentofu/metadata"
+      
+          if [ ! -f "$METADATA_FILE" ]; then
+            echo "❌ Metadata file not found at $METADATA_FILE"
+            exit 1
+          fi
+      
+          NAME=$(jq -r .name "$METADATA_FILE")
+          ROLE=$(jq -r .role "$METADATA_FILE")
+          VMID=$(jq -r .vmid "$METADATA_FILE")
+          OS_VERSION=$(jq -r .os_version "$METADATA_FILE")
+          NOTES=$(jq -r .notes "$METADATA_FILE")
+          IP=$(jq -r .ip "$METADATA_FILE")
+      
+          echo "::add-mask::$NAME"
+          echo "::add-mask::$ROLE"
+          echo "::add-mask::$VMID"
+          echo "::add-mask::$OS_VERSION"
+          echo "::add-mask::$NOTES"
+          echo "::add-mask::$IP"
+      
+          vault kv put "$VAULT_PATH" \
+            name="$NAME" \
+            role="$ROLE" \
+            vmid="$VMID" \
+            os_version="$OS_VERSION" \
+            notes="$NOTES" \
+            ip="$IP"
+        env:
+          VAULT_ADDR: ${{ env.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+          ENV_PATH: ${{ env.ENV_PATH }}
+          ENV_NAME: ${{ env.ENV_NAME }}        
+
       - name: 🕵️ Fetch GitHub PAT for runner registration
         run: |
           export GITHUB_PAT=$(vault kv get -field=pat kv/data/home-ops/global/github/pat_runner_manage)
@@ -169,21 +213,13 @@ jobs:
           echo "::add-mask::$TOKEN"
           echo "RUNNER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
-      - name: 📝 Show generated metadata JSON
+      - name: 🚀 Run Ansible to configure the VM
         run: |
-          echo "=== VM Metadata Files ==="
-          ls -lah terraform/environments/homelab/bootstrap-runner/metadata || echo "❌ No metadata directory"
-      
-          echo "=== bootstrap-runner metadata ==="
-          cat terraform/environments/homelab/bootstrap-runner/metadata/bootstrap-runner.json || echo "❌ No metadata found"
-
-      # - name: 🚀 Run Ansible to configure the VM
-      #   run: |
-      #     ansible-playbook -i "${VM_IP}," \
-      #       -u ubuntu \
-      #       --private-key ./proxmox_vm.key \
-      #       playbooks/provision-vm.yaml \
-      #       --extra-vars "env_name=bootstrap-runner vault_addr=$VAULT_ADDR vault_token=$VAULT_TOKEN bootstrap_user=ubuntu github_runner_token=$RUNNER_TOKEN"
+          ansible-playbook -i "${VM_IP}," \
+            -u ubuntu \
+            --private-key ./proxmox_vm.key \
+            playbooks/provision-vm.yaml \
+            --extra-vars "env_name=bootstrap-runner vault_addr=$VAULT_ADDR vault_token=$VAULT_TOKEN bootstrap_user=ubuntu github_runner_token=$RUNNER_TOKEN"
 
       - name: 🧼 Cleanup
         if: always()
