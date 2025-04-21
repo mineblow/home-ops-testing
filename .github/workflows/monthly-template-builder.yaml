@@ -90,7 +90,7 @@
           run: |
             set -euo pipefail
             eval "$(ssh-agent -s)"
-            ssh-add proxmox.key
+            ssh-add < proxmox.key
 
             echo "📤 Copying ${{ matrix.template }}"
             scp -o StrictHostKeyChecking=no ".scripts/cicd/templates/${{ matrix.template }}" \
@@ -104,7 +104,7 @@
           run: |
             set -euo pipefail
             eval "$(ssh-agent -s)"
-            ssh-add proxmox.key
+            ssh-add < proxmox.key
 
             SCRIPT_NAME=${{ matrix.template }}
             echo "🚀 Running $SCRIPT_NAME remotely"
