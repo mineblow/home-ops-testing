@@ -100,10 +100,6 @@
             echo ""
             echo "🔬 Hexdump preview:"
             hexdump -C proxmox.key | head -n 20
-        
-            echo ""
-            echo "🧪 ssh-keygen validation..."
-            ssh-keygen -y -f proxmox.key >/dev/null && echo "✅ ssh-keygen succeeded" || echo "❌ ssh-keygen failed"
             
             echo "🔑 Fetching SSH user + domain"
             PROXMOX_SSH_USER=$(vault kv get -field=value kv/home-ops/global/proxmox/proxmox_ssh_user)
