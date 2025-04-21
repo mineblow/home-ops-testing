@@ -9,6 +9,13 @@
   jobs:
     detect-templates:
       runs-on: ubuntu-latest
+      timeout-minutes: 30
+  
+      permissions:
+        contents: write
+        pull-requests: write
+        id-token: write
+      
       outputs:
         templates: ${{ steps.set.outputs.templates }}
       steps:
@@ -28,9 +35,6 @@
       strategy:
         matrix:
           template: ${{ fromJson(needs.detect-templates.outputs.templates) }}
-  
-      env:
-        VAULT_ROLE: template-builder-ci
   
       steps:
         - name: 📎 Checkout repo
@@ -56,10 +60,10 @@
           run: bash .scripts/cicd/bootstrap/install-vault.sh
   
         - name: 🔓 Authenticate to Vault
-          run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
           env:
-            VAULT_ROLE: ${{ env.VAULT_ROLE }}
-  
+            VAULT_ROLE: template-builder-ci
+          run: bash ./.scripts/cicd/bootstrap/vault-auth.sh
+
         - name: 🔐 Fetch Proxmox secrets from Vault
           run: |
             set -euo pipefail
