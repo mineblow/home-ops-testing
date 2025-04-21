@@ -75,11 +75,11 @@
             
             vault kv get -field=value "$SECRET_PATH" > proxmox.key
         
-            echo ""
-            echo "🔐 Masking key contents line by line..."
-            while IFS= read -r line; do
-              echo "::add-mask::$line"
-            done < proxmox.key
+            # echo ""
+            # echo "🔐 Masking key contents line by line..."
+            # while IFS= read -r line; do
+            #   echo "::add-mask::$line"
+            # done < proxmox.key
         
             echo ""
             echo "🔧 Setting permissions on key file"
