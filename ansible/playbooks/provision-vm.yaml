@@ -1,0 +1,22 @@
+---
+- name: Detect OS and abort if unsupported
+  hosts: all
+  gather_facts: true
+
+  pre_tasks:
+    - name: Fail if unsupported OS
+      fail:
+        msg: "Unsupported OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      when: >
+        ansible_distribution != 'Ubuntu' or
+        (
+          ansible_distribution_version is not version('22.04', '==') and
+          ansible_distribution_version is not version('24.04', '==')
+        )
+
+# These MUST be at the top level (not inside a play)
+- import_playbook: ubuntu/provision-vm-2204.yaml
+  when: ansible_distribution_version is version('22.04', '==')
+
+- import_playbook: ubuntu/provision-vm-2404.yaml
+  when: ansible_distribution_version is version('24.04', '==')

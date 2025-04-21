@@ -197,7 +197,7 @@ jobs:
 
       - name: 🕵️ Fetch GitHub PAT for runner registration
         run: |
-          export GITHUB_PAT=$(vault kv get -field=pat kv/data/home-ops/global/github/pat_runner_manage)
+          export GITHUB_PAT=$(vault kv get -field=pat kv/home-ops/global/github/pat_runner_manage)
           echo "::add-mask::$GITHUB_PAT"
           echo "GITHUB_PAT=$GITHUB_PAT" >> "$GITHUB_ENV"        
 

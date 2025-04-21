@@ -1,0 +1,90 @@
+---
+- name: Ensure github-runner user exists
+  user:
+    name: github-runner
+    shell: /bin/bash
+    groups: sudo
+    append: yes
+    state: present
+  become: true
+
+- name: Allow github-runner full sudo without password
+  become: true
+  copy:
+    dest: /etc/sudoers.d/github-runner-root
+    content: "github-runner ALL=(ALL) NOPASSWD: ALL\n"
+    owner: root
+    group: root
+    mode: '0440'
+
+
+- name: Allow Ansible to sudo to github-runner without password
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/github-runner
+    content: "ubuntu ALL=(github-runner) NOPASSWD: ALL\n"
+    owner: root
+    group: root
+    mode: '0440'
+
+- name: Create runner working directory
+  file:
+    path: /home/github-runner/actions-runner
+    state: directory
+    owner: github-runner
+    group: github-runner
+    mode: '0755'
+  become: true
+
+- name: Download GitHub Actions runner
+  get_url:
+    url: "https://github.com/actions/runner/releases/download/v2.314.1/actions-runner-linux-x64-2.314.1.tar.gz"
+    dest: "/home/github-runner/actions-runner/runner.tar.gz"
+    mode: '0644'
+    owner: github-runner
+    group: github-runner
+  become: true
+
+- name: Extract GitHub Actions runner
+  unarchive:
+    src: "/home/github-runner/actions-runner/runner.tar.gz"
+    dest: "/home/github-runner/actions-runner"
+    remote_src: yes
+    extra_opts: ["--no-same-owner"]
+    owner: github-runner
+    group: github-runner
+  become: true
+
+- name: Fix ownership
+  file:
+    path: "/home/github-runner"
+    owner: github-runner
+    group: github-runner
+    recurse: yes
+  become: true
+
+- name: Register GitHub runner
+  become: true
+  shell: |
+    sudo -H -u github-runner bash -c '
+      cd /home/github-runner/actions-runner && \
+      ./config.sh \
+        --url https://github.com/mineblow/home-ops-testing \
+        --token {{ github_runner_token }} \
+        --name bootstrap-runner \
+        --labels self-hosted,bootstrap-runner \
+        --unattended
+    '
+
+- name: Install GitHub Actions runner service (as github-runner via root login shell)
+  become: true
+  shell: |
+    sudo su - github-runner -c 'cd /home/github-runner/actions-runner && sudo ./svc.sh install'
+
+
+- name: Enable and start service
+  systemd:
+    name: actions.runner.mineblow-home-ops-testing.bootstrap-runner.service
+    enabled: true
+    state: started
+  become: true
