@@ -28,7 +28,7 @@
       needs: detect-templates
       runs-on: ubuntu-latest
       timeout-minutes: 30
-
+  
       permissions:
         contents: write
         pull-requests: write
@@ -37,19 +37,19 @@
       strategy:
         matrix:
           template: ${{ fromJson(needs.detect-templates.outputs.templates) }}
-
+  
       steps:
         - name: 📎 Checkout repo
           uses: actions/checkout@v4
-
+  
         - name: 🔐 Authenticate to Google Cloud
           uses: google-github-actions/auth@v1
           with:
             credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
-
+  
         - name: 🧠 Extract Vault bootstrap from GCP
           run: bash ./.scripts/cicd/bootstrap/auth-google.sh
-
+  
         - name: 🌐 Start Tailscale (GitHub-hosted)
           uses: tailscale/github-action@v2
           with:
@@ -57,10 +57,10 @@
             oauth-secret: ${{ env.TAILSCALE_CLIENT_SECRET }}
             hostname: template-builder-ci
             tags: tag:github-ci
-
+  
         - name: 💠 Install Vault CLI
           run: bash .scripts/cicd/bootstrap/install-vault.sh
-
+  
         - name: 🔓 Authenticate to Vault
           env:
             VAULT_ROLE: template-builder-ci
@@ -69,15 +69,25 @@
         - name: 🔐 Fetch Proxmox secrets from Vault
           run: |
             set -euo pipefail
-
-            echo "🔑 Fetching SSH key"
-            vault kv get -field=value kv/home-ops/environment/homelab/template-builder/secrets/proxmox_ssh_key_private > proxmox.key
+  
+            SECRET_PATH="kv/home-ops/environment/homelab/template-builder/secrets/proxmox_ssh_key_private"
+            echo "🔑 Fetching SSH key from Vault: $SECRET_PATH"
+            
+            vault kv get -field=value "$SECRET_PATH" | cat > proxmox.key
+        
+            # echo ""
+            # echo "🔐 Masking key contents line by line..."
+            # while IFS= read -r line; do
+            #   echo "::add-mask::$line"
+            # done < proxmox.key
+        
+            echo ""
+            echo "🔧 Setting permissions on key file"
             chmod 600 proxmox.key
 
-            echo "🔑 Fetching SSH user and domain"
+            echo "🔑 Fetching SSH user + domain"
             PROXMOX_SSH_USER=$(vault kv get -field=value kv/home-ops/global/proxmox/proxmox_ssh_user)
             PROXMOX_DOMAIN=$(vault kv get -field=value kv/home-ops/global/proxmox/domain)
-
             echo "::add-mask::$PROXMOX_SSH_USER"
             echo "::add-mask::$PROXMOX_DOMAIN"
             echo "PROXMOX_SSH_USER=$PROXMOX_SSH_USER" >> "$GITHUB_ENV"
@@ -85,32 +95,27 @@
           env:
             VAULT_ADDR: ${{ env.VAULT_ADDR }}
             VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
-
+  
         - name: 📤 Copy script to Proxmox host
           run: |
-            set -euo pipefail
-            eval "$(ssh-agent -s)"
-            ssh-add < proxmox.key
-
-            echo "📤 Copying ${{ matrix.template }}"
-            scp -o StrictHostKeyChecking=no ".scripts/cicd/templates/${{ matrix.template }}" \
-              "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN:/home/$PROXMOX_SSH_USER/scripts/"
-
-            echo "🔐 chmod on remote script"
-            ssh -o StrictHostKeyChecking=no "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN" \
+            scp -i proxmox.key -o StrictHostKeyChecking=no \
+              ".scripts/cicd/templates/${{ matrix.template }}" \
+              $PROXMOX_SSH_USER@$PROXMOX_DOMAIN:/home/$PROXMOX_SSH_USER/scripts/
+  
+            ssh -i proxmox.key -o StrictHostKeyChecking=no \
+              $PROXMOX_SSH_USER@$PROXMOX_DOMAIN \
               "sudo -n chmod +x /home/$PROXMOX_SSH_USER/scripts/${{ matrix.template }}"
-
+  
         - name: 🚀 Execute and delete script on Proxmox host
           run: |
             set -euo pipefail
-            eval "$(ssh-agent -s)"
-            ssh-add < proxmox.key
-
             SCRIPT_NAME=${{ matrix.template }}
-            echo "🚀 Running $SCRIPT_NAME remotely"
-            ssh -o StrictHostKeyChecking=no "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN" \
+  
+            echo "🚀 Running $SCRIPT_NAME remotely on $PROXMOX_DOMAIN"
+            ssh -i proxmox.key -o StrictHostKeyChecking=no "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN" \
               "bash -c 'set -euo pipefail && sudo -n /home/$PROXMOX_SSH_USER/scripts/$SCRIPT_NAME && rm -f /home/$PROXMOX_SSH_USER/scripts/$SCRIPT_NAME'"
 
         - name: 🧹 Cleanup
           if: always()
           run: rm -f proxmox.key vault.json
+  
