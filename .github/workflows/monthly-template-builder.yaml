@@ -209,16 +209,26 @@
   
         - name: 🧠 Fetch VM metadata
           id: fetch_meta
+          continue-on-error: true
           run: |
+            set -euo pipefail
             VM="${{ matrix.vm }}"
             VAULT_VM_PATH="kv/home-ops/environment/homelab/${VM}/opentofu/metadata"
-            vault kv get -format=json "$VAULT_VM_PATH" > vm_meta.json
+        
+            echo "🔍 Attempting to fetch metadata for $VM..."
+            if ! vault kv get -format=json "$VAULT_VM_PATH" > vm_meta.json 2>/dev/null; then
+              echo "❌ Metadata not found or access denied for $VM. Skipping job."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+        
             OS_VERSION=$(jq -r '.data.data.os_version' vm_meta.json)
             echo "os_version=$OS_VERSION" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           env:
             VAULT_ADDR: ${{ env.VAULT_ADDR }}
             VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
-  
+
         - name: 📥 Fetch latest template ID from Vault
           id: fetch_template
           run: |
