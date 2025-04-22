@@ -103,7 +103,7 @@
               "mkdir -p /home/$PROXMOX_SSH_USER/scripts"
           
             scp -i proxmox.key -o StrictHostKeyChecking=no \
-              ".scripts/cicd/templates/${{ matrix.template }}" \
+              ".proxmox/iso-builder/${{ matrix.template }}" \
               $PROXMOX_SSH_USER@$PROXMOX_DOMAIN:/home/$PROXMOX_SSH_USER/scripts/
   
             ssh -i proxmox.key -o StrictHostKeyChecking=no \
