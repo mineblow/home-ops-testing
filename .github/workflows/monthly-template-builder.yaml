@@ -171,11 +171,30 @@
       runs-on: ubuntu-latest
       strategy:
         matrix:
-          vm: [ "bootstrap-runner", "k3s-master", "k3s-worker" ]
+          vm: [ "bootstrap-runner", "k3s-master"]
       steps:
         - name: 📎 Checkout repo
           uses: actions/checkout@v4
+
+        - name: 🔐 Authenticate to Google Cloud
+          uses: google-github-actions/auth@v1
+          with:
+            credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+
+        - name: 🧠 Extract Vault bootstrap from GCP
+          run: bash ./.scripts/cicd/bootstrap/auth-google.sh
+
+        - name: 🌐 Start Tailscale (GitHub-hosted)
+          uses: tailscale/github-action@v2
+          with:
+            oauth-client-id: ${{ env.TAILSCALE_CLIENT_ID }}
+            oauth-secret: ${{ env.TAILSCALE_CLIENT_SECRET }}
+            hostname: template-builder-ci
+            tags: tag:github-ci
   
+        - name: 💠 Install Vault CLI
+          run: bash .scripts/cicd/bootstrap/install-vault.sh
+        
         - name: 🔐 Authenticate to Vault
           run: bash .scripts/cicd/bootstrap/vault-auth.sh
           env:
@@ -187,7 +206,7 @@
           id: fetch_meta
           run: |
             VM="${{ matrix.vm }}"
-            VAULT_VM_PATH="kv/home-ops/environment/homelab/${VM}/opentofu/metadata/${VM}"
+            VAULT_VM_PATH="kv/home-ops/environment/homelab/${VM}/opentofu/metadata/"
             vault kv get -format=json "$VAULT_VM_PATH" > vm_meta.json
             OS_VERSION=$(jq -r '.data.data.os_version' vm_meta.json)
             echo "os_version=$OS_VERSION" >> "$GITHUB_OUTPUT"
