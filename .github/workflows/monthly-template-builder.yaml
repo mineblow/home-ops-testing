@@ -173,22 +173,22 @@
         contents: write
         pull-requests: write
         id-token: write
-
+  
       strategy:
         matrix:
-          vm: [ "bootstrap-runner", "k3s-master"]
+          vm: [ "bootstrap-runner", "k3s-master" ]
       steps:
         - name: 📎 Checkout repo
           uses: actions/checkout@v4
-
+  
         - name: 🔐 Authenticate to Google Cloud
           uses: google-github-actions/auth@v1
           with:
             credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
-
+  
         - name: 🧠 Extract Vault bootstrap from GCP
           run: bash ./.scripts/cicd/bootstrap/auth-google.sh
-
+  
         - name: 🌐 Start Tailscale (GitHub-hosted)
           uses: tailscale/github-action@v2
           with:
@@ -199,7 +199,7 @@
   
         - name: 💠 Install Vault CLI
           run: bash .scripts/cicd/bootstrap/install-vault.sh
-        
+  
         - name: 🔐 Authenticate to Vault
           run: bash .scripts/cicd/bootstrap/vault-auth.sh
           env:
@@ -207,30 +207,31 @@
             VAULT_ADDR: ${{ env.VAULT_ADDR }}
             VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
   
-        - name: 🧠 Fetch VM metadata
+        - name: 🧠 Fetch VM metadata (gracefully skip if missing)
           id: fetch_meta
           continue-on-error: true
           run: |
             set -euo pipefail
             VM="${{ matrix.vm }}"
             VAULT_VM_PATH="kv/home-ops/environment/homelab/${VM}/opentofu/metadata"
-        
+  
             echo "🔍 Attempting to fetch metadata for $VM..."
             if ! vault kv get -format=json "$VAULT_VM_PATH" > vm_meta.json 2>/dev/null; then
               echo "❌ Metadata not found or access denied for $VM. Skipping job."
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-        
+  
             OS_VERSION=$(jq -r '.data.data.os_version' vm_meta.json)
             echo "os_version=$OS_VERSION" >> "$GITHUB_OUTPUT"
             echo "skip=false" >> "$GITHUB_OUTPUT"
           env:
             VAULT_ADDR: ${{ env.VAULT_ADDR }}
             VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
-
+  
         - name: 📥 Fetch latest template ID from Vault
           id: fetch_template
+          if: steps.fetch_meta.outputs.skip != 'true'
           run: |
             OS_VERSION="${{ steps.fetch_meta.outputs.os_version }}"
             vault kv get -format=json kv/home-ops/environment/homelab/template-builder/build-state/${OS_VERSION} > template_meta.json
@@ -241,11 +242,13 @@
             VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
   
         - name: 📥 Fetch current terraform.auto.tfvars from Vault
+          if: steps.fetch_meta.outputs.skip != 'true'
           run: |
             vault kv get -field=value kv/home-ops/environment/homelab/terraform.auto.tfvars > terraform.auto.tfvars
   
         - name: 🔎 Check if template_vmid is stale
           id: check
+          if: steps.fetch_meta.outputs.skip != 'true'
           run: |
             VM="${{ matrix.vm }}"
             TEMPLATE_ID="${{ steps.fetch_template.outputs.template_id }}"
@@ -264,6 +267,7 @@
           run: |
             VM="${{ matrix.vm }}"
             BRANCH="signal-template-bump-${VM}"
+            TEMPLATE_ID="${{ steps.fetch_template.outputs.template_id }}"
   
             mkdir -p .ci-signals
             echo "template_vmid for $VM is stale. Needs update to ${TEMPLATE_ID}" > .ci-signals/${VM}
@@ -283,4 +287,7 @@
               --base main
           env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
+  
+        - name: 💤 VM skipped (no metadata in Vault)
+          if: steps.fetch_meta.outputs.skip == 'true'
+          run: echo "⚠️  Skipping ${{ matrix.vm }} — metadata secret not found in Vault."
