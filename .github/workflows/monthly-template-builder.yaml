@@ -19,7 +19,7 @@
   
         - id: set
           run: |
-            files=$(find .scripts/cicd/templates -type f -name '*-template.sh' -exec basename {} \;)
+            files=$(find .proxmox/iso-builder -type f -name '*-template.sh' -exec basename {} \;)
             echo "Found templates: $files"
             json=$(jq -nc --argjson arr "$(printf '%s\n' $files | jq -R . | jq -s .)" '$arr')
             echo "templates=$json" >> "$GITHUB_OUTPUT"
