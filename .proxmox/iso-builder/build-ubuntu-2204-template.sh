@@ -115,11 +115,14 @@ done
 # 🧾 BUILD METADATA
 # ─────────────────────────────────────────
 echo "🧾 Building metadata..."
+
+SHORT_VERSION=$(echo "$TEMPLATE_PREFIX" | grep -oP '[0-9]{2}\.[0-9]{2}' | tr -d '.')
+META_OUT="/var/lib/vz/template/ubuntu-${SHORT_VERSION}.meta.json"
+
 ISO_HASH=$(sha256sum "$ISO_PATH" | awk '{print $1}')
 SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
 SCRIPT_HASH=$(sha256sum "$SCRIPT_PATH" | awk '{print $1}')
 CENTRAL_TIMESTAMP=$(TZ="America/Chicago" date '+%Y-%m-%dT%H:%M:%S%z')
-META_OUT="/var/lib/vz/template/${TEMPLATE_PREFIX}-${TODAY}.meta.json"
 
 cat <<EOF > "$META_OUT"
 {
@@ -127,13 +130,12 @@ cat <<EOF > "$META_OUT"
   "script_hash": "${SCRIPT_HASH}",
   "template_id": "${VMID}",
   "timestamp": "${CENTRAL_TIMESTAMP}",
-  "os_version": "ubuntu-22.04",
+  "os_version": "ubuntu-${SHORT_VERSION}",
   "template_name": "${VMNAME}"
 }
 EOF
 
 echo "📦 Metadata saved to: $META_OUT"
-
 
 # ─────────────────────────────────────────
 # 📝 Logging (optional)

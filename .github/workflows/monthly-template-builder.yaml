@@ -122,8 +122,11 @@
         - name: 📥 Pull metadata from Proxmox
           id: fetch_meta
           run: |
+            set -euo pipefail
+        
             SCRIPT_NAME="${{ matrix.template }}"
-            META_NAME="${SCRIPT_NAME/.sh/.meta.json}"
+            VERSION=$(echo "$SCRIPT_NAME" | sed -E 's/^build-ubuntu-([0-9]{4})-template.sh$/\1/')
+            META_NAME="ubuntu-${VERSION}.meta.json"
         
             echo "📥 Downloading $META_NAME from Proxmox..."
             scp -i proxmox.key -o StrictHostKeyChecking=no \
@@ -136,14 +139,13 @@
             fi
         
             echo "✅ Pulled and verified: $META_NAME"
-        
             echo "meta_file=$META_NAME" >> "$GITHUB_OUTPUT"
         
             echo "🧹 Cleaning up metadata from remote"
             ssh -i proxmox.key -o StrictHostKeyChecking=no \
               "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN" \
               "rm -f /var/lib/vz/template/$META_NAME"
-            
+    
         - name: 🔐 Push metadata to Vault
           run: |
             META_FILE="${{ steps.fetch_meta.outputs.meta_file }}"
