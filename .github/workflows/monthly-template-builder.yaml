@@ -211,7 +211,7 @@
           id: fetch_meta
           run: |
             VM="${{ matrix.vm }}"
-            VAULT_VM_PATH="kv/home-ops/environment/homelab/${VM}/opentofu/metadata/"
+            VAULT_VM_PATH="kv/home-ops/environment/homelab/${VM}/opentofu/metadata"
             vault kv get -format=json "$VAULT_VM_PATH" > vm_meta.json
             OS_VERSION=$(jq -r '.data.data.os_version' vm_meta.json)
             echo "os_version=$OS_VERSION" >> "$GITHUB_OUTPUT"
