@@ -119,7 +119,45 @@
             ssh -i proxmox.key -o StrictHostKeyChecking=no "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN" \
               "bash -c 'set -euo pipefail && sudo -n /home/$PROXMOX_SSH_USER/scripts/$SCRIPT_NAME && rm -f /home/$PROXMOX_SSH_USER/scripts/$SCRIPT_NAME'"
 
+        - name: 📥 Pull metadata from Proxmox
+          id: fetch_meta
+          run: |
+            SCRIPT_NAME="${{ matrix.template }}"
+            META_NAME="${SCRIPT_NAME/.sh/.meta.json}"
+        
+            echo "📥 Downloading $META_NAME from Proxmox..."
+            scp -i proxmox.key -o StrictHostKeyChecking=no \
+              "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN:/var/lib/vz/template/$META_NAME" \
+              "./$META_NAME"
+        
+            if [[ ! -s "$META_NAME" ]]; then
+              echo "❌ Failed to fetch metadata file or file is empty"
+              exit 1
+            fi
+        
+            echo "✅ Pulled and verified: $META_NAME"
+        
+            echo "meta_file=$META_NAME" >> "$GITHUB_OUTPUT"
+        
+            echo "🧹 Cleaning up metadata from remote"
+            ssh -i proxmox.key -o StrictHostKeyChecking=no \
+              "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN" \
+              "rm -f /var/lib/vz/template/$META_NAME"
+            
+        - name: 🔐 Push metadata to Vault
+          run: |
+            META_FILE="${{ steps.fetch_meta.outputs.meta_file }}"
+            TEMPLATE_ID=$(jq -r '.template_name' "$META_FILE" | cut -d'-' -f1-2)
+            VAULT_PATH="kv/home-ops/environment/homelab/template-builder/build-state/${TEMPLATE_ID}"
+        
+            echo "📦 Pushing $META_FILE to Vault at $VAULT_PATH"
+            vault kv put "$VAULT_PATH" @"$META_FILE"
+          env:
+            VAULT_ADDR: ${{ env.VAULT_ADDR }}
+            VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+                            
         - name: 🧹 Cleanup
           if: always()
-          run: rm -f proxmox.key vault.json
+          run: rm -f proxmox.key vault.json *.meta.json
+        
   
