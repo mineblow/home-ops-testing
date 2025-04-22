@@ -150,18 +150,16 @@
           run: |
             META_FILE="${{ steps.fetch_meta.outputs.meta_file }}"
         
-            # Parse os_version from meta.json like "ubuntu-24.04" or "debian-12"
             DISTRO=$(jq -r '.os_version' "$META_FILE" | cut -d'-' -f1)
             VERSION=$(jq -r '.os_version' "$META_FILE" | cut -d'-' -f2 | tr -d '.')
-        
             VAULT_PATH="kv/home-ops/environment/homelab/template-builder/build-state/${DISTRO}-${VERSION}"
         
-            echo "📦 Pushing to Vault at $VAULT_PATH"
-            vault kv put "$VAULT_PATH" @"$META_FILE"
+            echo "📦 Pushing parsed metadata to Vault at $VAULT_PATH"
+            jq -r 'to_entries[] | "\(.key)=\(.value)"' "$META_FILE" | xargs vault kv put "$VAULT_PATH"
           env:
             VAULT_ADDR: ${{ env.VAULT_ADDR }}
-            VAULT_TOKEN: ${{ env.VAULT_TOKEN }}            
-                            
+            VAULT_TOKEN: ${{ env.VAULT_TOKEN }}        
+
         - name: 🧹 Cleanup
           if: always()
           run: rm -f proxmox.key vault.json *.meta.json
@@ -169,6 +167,13 @@
     vm_config_bumper:
       needs: build-template
       runs-on: ubuntu-latest
+      timeout-minutes: 30
+  
+      permissions:
+        contents: write
+        pull-requests: write
+        id-token: write
+
       strategy:
         matrix:
           vm: [ "bootstrap-runner", "k3s-master"]
