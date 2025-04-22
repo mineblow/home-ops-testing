@@ -149,17 +149,104 @@
         - name: 🔐 Push metadata to Vault
           run: |
             META_FILE="${{ steps.fetch_meta.outputs.meta_file }}"
-            TEMPLATE_ID=$(jq -r '.template_name' "$META_FILE" | cut -d'-' -f1-2)
-            VAULT_PATH="kv/home-ops/environment/homelab/template-builder/build-state/${TEMPLATE_ID}"
         
-            echo "📦 Pushing $META_FILE to Vault at $VAULT_PATH"
+            # Parse os_version from meta.json like "ubuntu-24.04" or "debian-12"
+            DISTRO=$(jq -r '.os_version' "$META_FILE" | cut -d'-' -f1)
+            VERSION=$(jq -r '.os_version' "$META_FILE" | cut -d'-' -f2 | tr -d '.')
+        
+            VAULT_PATH="kv/home-ops/environment/homelab/template-builder/build-state/${DISTRO}-${VERSION}"
+        
+            echo "📦 Pushing to Vault at $VAULT_PATH"
             vault kv put "$VAULT_PATH" @"$META_FILE"
           env:
             VAULT_ADDR: ${{ env.VAULT_ADDR }}
-            VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+            VAULT_TOKEN: ${{ env.VAULT_TOKEN }}            
                             
         - name: 🧹 Cleanup
           if: always()
           run: rm -f proxmox.key vault.json *.meta.json
         
+    vm_config_bumper:
+      needs: build-template
+      runs-on: ubuntu-latest
+      strategy:
+        matrix:
+          vm: [ "bootstrap-runner", "k3s-master", "k3s-worker" ]
+      steps:
+        - name: 📎 Checkout repo
+          uses: actions/checkout@v4
   
+        - name: 🔐 Authenticate to Vault
+          run: bash .scripts/cicd/bootstrap/vault-auth.sh
+          env:
+            VAULT_ROLE: template-builder-ci
+            VAULT_ADDR: ${{ env.VAULT_ADDR }}
+            VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+  
+        - name: 🧠 Fetch VM metadata
+          id: fetch_meta
+          run: |
+            VM="${{ matrix.vm }}"
+            VAULT_VM_PATH="kv/home-ops/environment/homelab/${VM}/opentofu/metadata/${VM}"
+            vault kv get -format=json "$VAULT_VM_PATH" > vm_meta.json
+            OS_VERSION=$(jq -r '.data.data.os_version' vm_meta.json)
+            echo "os_version=$OS_VERSION" >> "$GITHUB_OUTPUT"
+          env:
+            VAULT_ADDR: ${{ env.VAULT_ADDR }}
+            VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+  
+        - name: 📥 Fetch latest template ID from Vault
+          id: fetch_template
+          run: |
+            OS_VERSION="${{ steps.fetch_meta.outputs.os_version }}"
+            vault kv get -format=json kv/home-ops/environment/homelab/template-builder/build-state/${OS_VERSION} > template_meta.json
+            TEMPLATE_ID=$(jq -r '.data.data.template_id' template_meta.json)
+            echo "template_id=$TEMPLATE_ID" >> "$GITHUB_OUTPUT"
+          env:
+            VAULT_ADDR: ${{ env.VAULT_ADDR }}
+            VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+  
+        - name: 📥 Fetch current terraform.auto.tfvars from Vault
+          run: |
+            vault kv get -field=value kv/home-ops/environment/homelab/terraform.auto.tfvars > terraform.auto.tfvars
+  
+        - name: 🔎 Check if template_vmid is stale
+          id: check
+          run: |
+            VM="${{ matrix.vm }}"
+            TEMPLATE_ID="${{ steps.fetch_template.outputs.template_id }}"
+            CURRENT_ID=$(awk "/\"${VM}\".*{/,/}/ {if (\$1 == \"template_vmid\") print \$3}" terraform.auto.tfvars)
+  
+            echo "Current VMID: $CURRENT_ID, Latest: $TEMPLATE_ID"
+  
+            if [[ "$CURRENT_ID" != "$TEMPLATE_ID" ]]; then
+              echo "stale=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "stale=false" >> "$GITHUB_OUTPUT"
+            fi
+  
+        - name: 📤 Create stale signal file and PR
+          if: steps.check.outputs.stale == 'true'
+          run: |
+            VM="${{ matrix.vm }}"
+            BRANCH="signal-template-bump-${VM}"
+  
+            mkdir -p .ci-signals
+            echo "template_vmid for $VM is stale. Needs update to ${TEMPLATE_ID}" > .ci-signals/${VM}
+  
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
+  
+            git checkout -b "$BRANCH"
+            git add .ci-signals/${VM}
+            git commit -m "⬆️ Signal: template_vmid bump required for ${VM}"
+            git push origin "$BRANCH"
+  
+            gh pr create \
+              --title "⬆️ Signal: Bump template_vmid for ${VM}" \
+              --body "A new template is available. Update \`template_vmid\` for \`${VM}\` to \`${TEMPLATE_ID}\`. Merge this PR to trigger Vault sync." \
+              --head "$BRANCH" \
+              --base main
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
