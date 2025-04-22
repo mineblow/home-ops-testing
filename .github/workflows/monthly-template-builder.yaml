@@ -245,7 +245,7 @@
           if: steps.fetch_meta.outputs.skip != 'true'
           run: |
             VM="${{ matrix.vm }}"
-            vault kv get -field=value kv/home-ops/environment/homelab/${VM}/opentofu/terraform.auto.tfvars > terraform.auto.tfvars
+            vault kv get -field=value kv/home-ops/environment/homelab/${VM}/opentofu/terraform-auto-tfvars > terraform.auto.tfvars
   
         - name: 🔎 Check if template_vmid is stale
           id: check
