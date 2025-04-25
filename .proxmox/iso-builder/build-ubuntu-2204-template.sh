@@ -88,28 +88,30 @@ qm template "$VMID"
 qm set "$VMID" --tags "cloudinit,ubuntu,auto-built"
 
 # ─────────────────────────────────────────
-# 🏷️ RETAG TEMPLATES
+# 🧹 DELETE OLD TEMPLATES (before retagging)
 # ─────────────────────────────────────────
-echo "🏷️ Retagging templates..."
-ALL_VMS=($(qm list | grep "$TEMPLATE_PREFIX" | awk '{print $1","$2}' | sort -t, -k2 -r | cut -d, -f1))
-for i in "${!ALL_VMS[@]}"; do
-  tag="retired"
-  [[ $i -eq 0 ]] && tag="active"
-  qm set "${ALL_VMS[$i]}" --tags "cloudinit,ubuntu,auto-built,$tag"
+echo "🧹 Deleting old templates..."
+ALL_MATCHING=($(qm list | awk '$2 ~ /^'"$TEMPLATE_PREFIX"'/ { print $1","$2 }' | sort -t, -k2 -r | cut -d, -f1))
+
+RETAIN=0
+for ID in "${ALL_MATCHING[@]}"; do
+  [[ "$ID" == "$VMID" ]] && continue
+  ((RETAIN++))
+  if [[ $RETAIN -ge $MAX_TEMPLATES ]]; then
+    echo "🔥 Destroying VMID $ID"
+    qm destroy "$ID" --purge || echo "⚠️ Failed to destroy VMID $ID (may not exist)"
+  fi
 done
 
 # ─────────────────────────────────────────
-# 🧹 DELETE OLD TEMPLATES
+# 🏷️ RETAG SURVIVING TEMPLATES
 # ─────────────────────────────────────────
-echo "🧹 Deleting old templates..."
-COUNT=0
-for ID in "${ALL_VMS[@]}"; do
-  [[ "$ID" == "$VMID" ]] && continue  # skip current VM
-  ((COUNT++))
-  if [[ $COUNT -ge $MAX_TEMPLATES ]]; then
-    echo "🔥 Destroying VMID $ID"
-    qm destroy "$ID" --purge
-  fi
+echo "🏷️ Retagging templates..."
+SURVIVING=($(qm list | awk '$2 ~ /^'"$TEMPLATE_PREFIX"'/ { print $1","$2 }' | sort -t, -k2 -r | cut -d, -f1))
+for i in "${!SURVIVING[@]}"; do
+  tag="retired"
+  [[ $i -eq 0 ]] && tag="active"
+  qm set "${SURVIVING[$i]}" --tags "cloudinit,ubuntu,auto-built,$tag"
 done
 
 # ─────────────────────────────────────────
