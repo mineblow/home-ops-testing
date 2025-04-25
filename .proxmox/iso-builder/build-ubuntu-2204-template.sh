@@ -13,7 +13,6 @@ ISO_NAME="ubuntu-22.04-cloudimg-amd64.img"
 ISO_PATH="/var/lib/vz/template/iso/${ISO_NAME}"
 STORAGE_POOL="local-zfs"
 CI_DISK="scsi0"
-NODE="proxmox"
 TODAY=$(date +%Y-%m-%d)
 VMNAME="${TEMPLATE_PREFIX}-${TODAY}"
 
@@ -30,9 +29,10 @@ echo "📥 Downloading latest ISO..."
 curl -fLo "$ISO_PATH" "$ISO_URL"
 
 # ─────────────────────────────────────────
-# 🔢 DYNAMIC VMID ALLOCATION
+# 🔢 DYNAMIC VMID ALLOCATION + OLDEST RECLAIM
 # ─────────────────────────────────────────
 echo "🎲 Finding available VMID..."
+VMID=""
 for ((i=VMID_START; i<=VMID_END; i++)); do
   if ! qm status "$i" &>/dev/null; then
     VMID="$i"
@@ -40,9 +40,17 @@ for ((i=VMID_START; i<=VMID_END; i++)); do
   fi
 done
 
-if [[ -z "${VMID:-}" ]]; then
-  echo "❌ No free VMID between $VMID_START and $VMID_END."
-  exit 1
+if [[ -z "$VMID" ]]; then
+  echo "♻️ No free VMID, reclaiming oldest..."
+  OLDEST_VMID=$(qm list | awk '$2 ~ /^'"$TEMPLATE_PREFIX"'/ { print $1","$2 }' | sort -t, -k2 | head -n1 | cut -d, -f1)
+  if [[ -n "$OLDEST_VMID" ]]; then
+    echo "🔥 Reclaiming VMID $OLDEST_VMID"
+    qm destroy "$OLDEST_VMID" --purge
+    VMID="$OLDEST_VMID"
+  else
+    echo "❌ No reclaimable template found."
+    exit 1
+  fi
 fi
 
 # ─────────────────────────────────────────
@@ -88,22 +96,6 @@ qm template "$VMID"
 qm set "$VMID" --tags "cloudinit,ubuntu,auto-built"
 
 # ─────────────────────────────────────────
-# 🧹 DELETE OLD TEMPLATES (before retagging)
-# ─────────────────────────────────────────
-echo "🧹 Deleting old templates..."
-ALL_MATCHING=($(qm list | awk '$2 ~ /^'"$TEMPLATE_PREFIX"'/ { print $1","$2 }' | sort -t, -k2 -r | cut -d, -f1))
-
-RETAIN=0
-for ID in "${ALL_MATCHING[@]}"; do
-  [[ "$ID" == "$VMID" ]] && continue
-  ((RETAIN++))
-  if [[ $RETAIN -ge $MAX_TEMPLATES ]]; then
-    echo "🔥 Destroying VMID $ID"
-    qm destroy "$ID" --purge || echo "⚠️ Failed to destroy VMID $ID (may not exist)"
-  fi
-done
-
-# ─────────────────────────────────────────
 # 🏷️ RETAG SURVIVING TEMPLATES
 # ─────────────────────────────────────────
 echo "🏷️ Retagging templates..."
@@ -120,10 +112,7 @@ done
 echo "🧾 Building metadata..."
 
 SHORT_VERSION=$(echo "$TEMPLATE_PREFIX" | grep -oP '[0-9]{2}\.[0-9]{2}' || echo "unknown")
-STRIPPED_VERSION=$(echo "$SHORT_VERSION" | tr -d '.')
-
-META_NAME="${VMNAME}.meta.json"
-META_OUT="/var/lib/vz/template/${META_NAME}"
+META_OUT="/var/lib/vz/template/${VMNAME}.meta.json"
 
 ISO_HASH=$(sha256sum "$ISO_PATH" | awk '{print $1}')
 SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"

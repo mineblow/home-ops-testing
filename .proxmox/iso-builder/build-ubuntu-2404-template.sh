@@ -30,9 +30,10 @@ echo "📥 Downloading latest ISO..."
 curl -fLo "$ISO_PATH" "$ISO_URL"
 
 # ─────────────────────────────────────────
-# 🔢 DYNAMIC VMID ALLOCATION
+# 🔢 DYNAMIC VMID ALLOCATION (Auto-delete oldest if needed)
 # ─────────────────────────────────────────
 echo "🎲 Finding available VMID..."
+VMID=""
 for ((i=VMID_START; i<=VMID_END; i++)); do
   if ! qm status "$i" &>/dev/null; then
     VMID="$i"
@@ -40,9 +41,17 @@ for ((i=VMID_START; i<=VMID_END; i++)); do
   fi
 done
 
-if [[ -z "${VMID:-}" ]]; then
-  echo "❌ No free VMID between $VMID_START and $VMID_END."
-  exit 1
+if [[ -z "$VMID" ]]; then
+  echo "⚠️ No free VMID found. Deleting oldest template to reclaim ID..."
+  OLDEST=$(qm list | awk '$2 ~ /^'"$TEMPLATE_PREFIX"'/ { print $1","$2 }' | sort -t, -k2 | cut -d, -f1 | head -n1)
+  if [[ -n "$OLDEST" ]]; then
+    echo "🔥 Destroying oldest template VMID $OLDEST"
+    qm destroy "$OLDEST" --purge
+    VMID="$OLDEST"
+  else
+    echo "❌ Could not reclaim a VMID. No matching templates to delete."
+    exit 1
+  fi
 fi
 
 # ─────────────────────────────────────────
@@ -88,22 +97,6 @@ qm template "$VMID"
 qm set "$VMID" --tags "cloudinit,ubuntu,auto-built"
 
 # ─────────────────────────────────────────
-# 🧹 DELETE OLD TEMPLATES (before retagging)
-# ─────────────────────────────────────────
-echo "🧹 Deleting old templates..."
-ALL_MATCHING=($(qm list | awk '$2 ~ /^'"$TEMPLATE_PREFIX"'/ { print $1","$2 }' | sort -t, -k2 -r | cut -d, -f1))
-
-RETAIN=0
-for ID in "${ALL_MATCHING[@]}"; do
-  [[ "$ID" == "$VMID" ]] && continue
-  ((RETAIN++))
-  if [[ $RETAIN -ge $MAX_TEMPLATES ]]; then
-    echo "🔥 Destroying VMID $ID"
-    qm destroy "$ID" --purge || echo "⚠️ Failed to destroy VMID $ID (may not exist)"
-  fi
-done
-
-# ─────────────────────────────────────────
 # 🏷️ RETAG SURVIVING TEMPLATES
 # ─────────────────────────────────────────
 echo "🏷️ Retagging templates..."
@@ -118,10 +111,8 @@ done
 # 🧾 BUILD METADATA
 # ─────────────────────────────────────────
 echo "🧾 Building metadata..."
-
 SHORT_VERSION=$(echo "$TEMPLATE_PREFIX" | grep -oP '[0-9]{2}\.[0-9]{2}' || echo "unknown")
 STRIPPED_VERSION=$(echo "$SHORT_VERSION" | tr -d '.')
-
 META_NAME="${VMNAME}.meta.json"
 META_OUT="/var/lib/vz/template/${META_NAME}"
 
