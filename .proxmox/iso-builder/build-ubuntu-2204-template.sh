@@ -88,23 +88,10 @@ qm template "$VMID"
 qm set "$VMID" --tags "cloudinit,ubuntu,auto-built"
 
 # ─────────────────────────────────────────
-# 🧹 DELETE OLD TEMPLATES
-# ─────────────────────────────────────────
-echo "🧹 Deleting old templates..."
-TEMPLATES=$(qm list | grep "$TEMPLATE_PREFIX" | awk '{print $1,$2,$3}' | sort -k3 -r)
-TEMPLATE_IDS=($(echo "$TEMPLATES" | awk '{print $1}'))
-
-for ((i=MAX_TEMPLATES; i<${#TEMPLATE_IDS[@]}; i++)); do
-  OLD_VMID="${TEMPLATE_IDS[$i]}"
-  echo "🔥 Destroying VMID $OLD_VMID"
-  qm destroy "$OLD_VMID" --purge
-done
-
-# ─────────────────────────────────────────
 # 🏷️ RETAG TEMPLATES
 # ─────────────────────────────────────────
 echo "🏷️ Retagging templates..."
-ALL_VMS=($(qm list | grep "$TEMPLATE_PREFIX" | sort -k3 -r | awk '{print $1}'))
+ALL_VMS=($(qm list | grep "$TEMPLATE_PREFIX" | awk '{print $1","$2}' | sort -t, -k2 -r | cut -d, -f1))
 for i in "${!ALL_VMS[@]}"; do
   tag="retired"
   [[ $i -eq 0 ]] && tag="active"
@@ -112,12 +99,29 @@ for i in "${!ALL_VMS[@]}"; do
 done
 
 # ─────────────────────────────────────────
+# 🧹 DELETE OLD TEMPLATES
+# ─────────────────────────────────────────
+echo "🧹 Deleting old templates..."
+COUNT=0
+for ID in "${ALL_VMS[@]}"; do
+  [[ "$ID" == "$VMID" ]] && continue  # skip current VM
+  ((COUNT++))
+  if [[ $COUNT -ge $MAX_TEMPLATES ]]; then
+    echo "🔥 Destroying VMID $ID"
+    qm destroy "$ID" --purge
+  fi
+done
+
+# ─────────────────────────────────────────
 # 🧾 BUILD METADATA
 # ─────────────────────────────────────────
 echo "🧾 Building metadata..."
 
-SHORT_VERSION=$(echo "$TEMPLATE_PREFIX" | grep -oP '[0-9]{2}\.[0-9]{2}' | tr -d '.')
-META_OUT="/var/lib/vz/template/ubuntu-${SHORT_VERSION}.meta.json"
+SHORT_VERSION=$(echo "$TEMPLATE_PREFIX" | grep -oP '[0-9]{2}\.[0-9]{2}' || echo "unknown")
+STRIPPED_VERSION=$(echo "$SHORT_VERSION" | tr -d '.')
+
+META_NAME="${VMNAME}.meta.json"
+META_OUT="/var/lib/vz/template/${META_NAME}"
 
 ISO_HASH=$(sha256sum "$ISO_PATH" | awk '{print $1}')
 SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
