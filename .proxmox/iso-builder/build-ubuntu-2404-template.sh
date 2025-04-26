@@ -15,7 +15,14 @@ STORAGE_POOL="local-zfs"
 CI_DISK="scsi0"
 NODE="proxmox"
 TODAY=$(date +%Y-%m-%d)
+
+# VM name includes the date
 VMNAME="${TEMPLATE_PREFIX}-${TODAY}"
+
+# Metadata filename does NOT have date
+SHORT_VERSION=$(echo "$TEMPLATE_PREFIX" | grep -oP '[0-9]{2}\.[0-9]{2}' || echo "unknown")
+STRIPPED_VERSION=$(echo "$SHORT_VERSION" | tr -d '.')
+META_OUT="/var/lib/vz/template/ubuntu-${STRIPPED_VERSION}.meta.json"
 
 # ─────────────────────────────────────────
 # 🔒 PRECHECKS
@@ -111,11 +118,6 @@ done
 # 🧾 BUILD METADATA
 # ─────────────────────────────────────────
 echo "🧾 Building metadata..."
-SHORT_VERSION=$(echo "$TEMPLATE_PREFIX" | grep -oP '[0-9]{2}\.[0-9]{2}' || echo "unknown")
-STRIPPED_VERSION=$(echo "$SHORT_VERSION" | tr -d '.')
-META_NAME="${VMNAME}.meta.json"
-META_OUT="/var/lib/vz/template/${META_NAME}"
-
 ISO_HASH=$(sha256sum "$ISO_PATH" | awk '{print $1}')
 SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
 SCRIPT_HASH=$(sha256sum "$SCRIPT_PATH" | awk '{print $1}')
@@ -133,8 +135,3 @@ cat <<EOF > "$META_OUT"
 EOF
 
 echo "📦 Metadata saved to: $META_OUT"
-
-# ─────────────────────────────────────────
-# 📝 Logging (optional)
-# ─────────────────────────────────────────
-# echo "$(date -u) - Built $VMNAME (VMID $VMID)" >> /var/log/template-builder.log
