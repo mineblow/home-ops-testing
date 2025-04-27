@@ -293,14 +293,6 @@
             BRANCH="signal-template-bump-${VM}"
             TEMPLATE_ID="${{ steps.fetch_template.outputs.template_id }}"
         
-            mkdir -p .ci-signals/template_vmid
-        
-            TIMESTAMP="$(TZ='America/Chicago' date +"%B %d, %Y @ %-I:%M %p CT")"
-        
-            {
-              echo "template_vmid for $VM is stale. Needs update to ${TEMPLATE_ID} - Generated at $TIMESTAMP"
-            } > .ci-signals/template_vmid/${VM}
-        
             git config user.name "GitHub Actions"
             git config user.email "actions@github.com"
         
@@ -316,6 +308,15 @@
               echo "➕ Branch does not exist. Creating new branch."
               git checkout -b "$BRANCH"
             fi
+        
+            echo "🛠️ Now creating signal file after branch is checked out..."
+            mkdir -p .ci-signals/template_vmid
+        
+            TIMESTAMP="$(TZ='America/Chicago' date +"%B %d, %Y @ %-I:%M %p CT")"
+        
+            {
+              echo "template_vmid for $VM is stale. Needs update to ${TEMPLATE_ID} - Generated at $TIMESTAMP"
+            } > .ci-signals/template_vmid/${VM}
         
             git add .ci-signals/template_vmid/${VM}
             git commit -m "Update template_vmid update required for ${VM}" || echo "Nothing new to commit."
@@ -359,7 +360,7 @@
                 --base main
             fi
           env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}          
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}                
 
         - name: 💤 VM skipped (no metadata in Vault)
           if: steps.fetch_meta.outputs.skip == 'true'
