@@ -25,19 +25,6 @@ resource "vault_kv_secret_v2" "vm_ssh_key_public" {
   })
 }
 
-
-resource "proxmox_virtual_environment_file" "cloudinit_file" {
-  for_each     = var.vm_config
-  content_type = "snippets"
-  datastore_id = each.value.snippet_storage
-  node_name    = each.value.target_node
-
-  source_raw {
-    data      = local.base_cloudinit[each.key]
-    file_name = "${each.key}-cloudinit.yaml"
-  }
-}
-
 resource "proxmox_virtual_environment_vm" "vm" {
   for_each = var.vm_config
 
@@ -84,7 +71,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
   }
 
   initialization {
-    datastore_id = each.value.storage
+    datastore_id      = "snippets-store"
 
     user_account {
       username = each.value.cloudinit_user
@@ -98,7 +85,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
       }
     }
 
-    user_data_file_id = proxmox_virtual_environment_file.cloudinit_file[each.key].id
+    user_data_file_id = "snippets/${local.derived_os_version[name]}.yaml"
   }
 
   tags = local.augmented_tags[each.key]
