@@ -6,14 +6,12 @@ set -euo pipefail
 # ─────────────────────────────────────────
 VMID_START=9010
 VMID_END=9015
-MAX_TEMPLATES=5
 TEMPLATE_PREFIX="ubuntu-24.04-cloudinit"
 ISO_URL="https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
 ISO_NAME="ubuntu-24.04-cloudimg-amd64.img"
 ISO_PATH="/var/lib/vz/template/iso/${ISO_NAME}"
 STORAGE_POOL="local-zfs"
 CI_DISK="scsi0"
-NODE="proxmox"
 TODAY=$(date +%Y-%m-%d)
 
 # VM name includes the date
@@ -102,7 +100,7 @@ qm set "$VMID" --tags "cloudinit,ubuntu,auto-built"
 # 🏷️ RETAG SURVIVING TEMPLATES
 # ─────────────────────────────────────────
 echo "🏷️ Retagging templates..."
-SURVIVING=($(qm list | awk '$2 ~ /^'"$TEMPLATE_PREFIX"'/ { print $1","$2 }' | sort -t, -k2 -r | cut -d, -f1))
+mapfile -t SURVIVING < <(qm list | awk '$2 ~ /^'"$TEMPLATE_PREFIX"'/ { print $1","$2 }' | sort -t, -k2 -r | cut -d, -f1)
 for i in "${!SURVIVING[@]}"; do
   tag="retired"
   [[ $i -eq 0 ]] && tag="active"

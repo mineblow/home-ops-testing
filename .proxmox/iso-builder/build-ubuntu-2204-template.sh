@@ -6,7 +6,6 @@ set -euo pipefail
 # ─────────────────────────────────────────
 VMID_START=9000
 VMID_END=9005
-MAX_TEMPLATES=5
 TEMPLATE_PREFIX="ubuntu-22.04-cloudinit"
 ISO_URL="https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
 ISO_NAME="ubuntu-22.04-cloudimg-amd64.img"
@@ -101,7 +100,7 @@ qm set "$VMID" --tags "cloudinit,ubuntu,auto-built"
 # 🏷️ RETAG SURVIVING TEMPLATES
 # ─────────────────────────────────────────
 echo "🏷️ Retagging templates..."
-SURVIVING=($(qm list | awk '$2 ~ /^'"$TEMPLATE_PREFIX"'/ { print $1","$2 }' | sort -t, -k2 -r | cut -d, -f1))
+mapfile -t SURVIVING < <(qm list | awk '$2 ~ /^'"$TEMPLATE_PREFIX"'/ { print $1","$2 }' | sort -t, -k2 -r | cut -d, -f1)
 for i in "${!SURVIVING[@]}"; do
   tag="retired"
   [[ $i -eq 0 ]] && tag="active"
