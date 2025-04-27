@@ -97,21 +97,33 @@
             VAULT_ADDR: ${{ env.VAULT_ADDR }}
             VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
 
-        - name: 📤 Copy script to Proxmox host
+        - name: 📤 Copy script and cloud-init YAML to Proxmox host
           run: |
             set -euo pipefail
-
+        
+            SCRIPT_NAME="${{ matrix.template }}"
+            VERSION=$(echo "$SCRIPT_NAME" | sed -E 's/^build-ubuntu-([0-9]{4})-template.sh$/\1/')
+            CLOUDINIT_FILE="ubuntu-${VERSION}.yaml"
+        
+            echo "📥 Creating scripts folder if missing..."
             ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i proxmox.key \
               "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN" \
               "mkdir -p /home/$PROXMOX_SSH_USER/scripts"
-            
+        
+            echo "📤 Uploading template builder script..."
             scp -i proxmox.key -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-              ".proxmox/iso-builder/${{ matrix.template }}" \
-              $PROXMOX_SSH_USER@$PROXMOX_DOMAIN:/home/$PROXMOX_SSH_USER/scripts/
-
+              ".proxmox/iso-builder/${SCRIPT_NAME}" \
+              "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN:/home/$PROXMOX_SSH_USER/scripts/"
+        
+            echo "🔧 Making builder script executable..."
             ssh -i proxmox.key -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-              $PROXMOX_SSH_USER@$PROXMOX_DOMAIN \
-              "sudo -n chmod +x /home/$PROXMOX_SSH_USER/scripts/${{ matrix.template }}"
+              "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN" \
+              "sudo -n chmod +x /home/$PROXMOX_SSH_USER/scripts/${SCRIPT_NAME}"
+        
+            echo "📥 Uploading cloud-init YAML file..."
+            scp -i proxmox.key -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+              ".proxmox/.cloud-init/${CLOUDINIT_FILE}" \
+              "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN:/var/lib/vz/snippets/${CLOUDINIT_FILE}"          
 
         - name: 🚀 Execute and delete script on Proxmox host
           run: |
