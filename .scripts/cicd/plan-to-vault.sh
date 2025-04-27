@@ -16,7 +16,7 @@ echo "📦 Running tofu init..."
 tofu -chdir="$ENV_PATH" init -backend-config=backend-consul.hcl -reconfigure
 
 echo "🧊 Running tofu plan..."
-tofu -chdir="$ENV_PATH" plan -no-color -out="$PLAN_FILE"
+tofu -chdir="$ENV_PATH" plan -no-color -out="$PLAN_FILE" > /dev/null
 
 if [[ ! -s "$PLAN_FULL_PATH" ]]; then
   echo "❌ tfplan not found or empty at $PLAN_FULL_PATH"
