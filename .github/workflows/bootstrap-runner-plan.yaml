@@ -94,7 +94,7 @@ jobs:
       
           echo "🔐 Fetching Vault secrets..."
       
-          for SECRET in proxmox_api_url proxmox_api_token proxmox_ssh_user proxmox_ssh_key consul_state_locking_token consul_state_locking_path; do
+          for SECRET in proxmox_api_token consul_state_locking_token consul_state_locking_path; do
             VAL=$(vault kv get -field=value "$VAULT_PREFIX/$SECRET" || true)
       
             if [[ -z "$VAL" ]]; then
@@ -103,43 +103,33 @@ jobs:
             fi
       
             case $SECRET in
-              proxmox_ssh_user)
-                echo "::add-mask::$VAL"
-                printf 'proxmox_ssh_user = "%s"\n' "$VAL" >> "$ENV_PATH/vault.auto.tfvars"
-                ;;
-      
-              proxmox_ssh_key)
-                echo "$VAL" > "$ENV_PATH/proxmox.key"
-                chmod 600 "$ENV_PATH/proxmox.key"
-                echo "$VAL" | while IFS= read -r line; do
-                  [[ -n "$line" ]] && echo "::add-mask::$line"
-                done
-                echo 'proxmox_ssh_private_key = "proxmox.key"' >> "$ENV_PATH/vault.auto.tfvars"
-                ;;
-      
-              proxmox_api_url|proxmox_api_token)
+              proxmox_api_token)
                 echo "::add-mask::$VAL"
                 printf '%s = "%s"\n' "$SECRET" "$VAL" >> "$ENV_PATH/vault.auto.tfvars"
                 ;;
-      
               consul_state_locking_token)
                 echo "::add-mask::$VAL"
                 echo "CONSUL_HTTP_TOKEN=$VAL" >> $GITHUB_ENV
                 ;;
-      
               consul_state_locking_path)
                 echo "path = \"$VAL\"" >> "$ENV_PATH/backend-consul.hcl"
                 ;;
             esac
           done
       
-          CONSUL_DOMAIN=$(vault kv get -field=value kv/home-ops/consul/domain | sed 's:/*$::')
+          echo "🔐 Fetching global Vault secrets..."
+      
+          PROXMOX_API_URL=$(vault kv get -field=value kv/home-ops/global/proxmox/api_url)
+          echo "::add-mask::$PROXMOX_API_URL"
+          echo "proxmox_api_url = \"$PROXMOX_API_URL\"" >> "$ENV_PATH/vault.auto.tfvars"
+      
+          CONSUL_DOMAIN=$(vault kv get -field=value kv/home-ops/global/consul/domain | sed 's:/*$::')
           echo "address = \"$CONSUL_DOMAIN\"" >> "$ENV_PATH/backend-consul.hcl"
           echo "CONSUL_HTTP_ADDR=$CONSUL_DOMAIN" >> $GITHUB_ENV
       
           VM_CONFIG=$(vault kv get -field=value kv/home-ops/environment/homelab/$ENV_NAME/opentofu/terraform-auto-tfvars)
           echo "$VM_CONFIG" | while IFS= read -r line; do echo "::add-mask::$line"; done
-          echo "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"      
+          echo "$VM_CONFIG" >> "$ENV_PATH/terraform.auto.tfvars"          
 
       - name: 🧊 Run secure tofu plan and store in Vault
         run: bash ./.scripts/cicd/plan-to-vault.sh
