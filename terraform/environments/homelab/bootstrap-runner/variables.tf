@@ -53,13 +53,3 @@ variable "ssh_key_path" {
   type        = string
   default     = "~/.ssh/id_ed25519.pub"
 }
-
-variable "proxmox_ssh_user" {
-  description = "Username for SSH access to Proxmox nodes"
-  type        = string
-}
-
-variable "proxmox_ssh_private_key" {
-  description = "Path to private SSH key for Proxmox access"
-  type        = string
-}
