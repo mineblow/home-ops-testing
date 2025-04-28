@@ -85,7 +85,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
       }
     }
 
-    user_data_file_id = "snippets-store:snippets/${local.derived_os_version[name]}.yaml"
+    user_data_file_id = "snippets-store:snippets/${local.derived_os_version[each.key]}.yaml"
   }
 
   tags = local.augmented_tags[each.key]
