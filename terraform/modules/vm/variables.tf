@@ -8,7 +8,6 @@ variable "vm_config" {
     memory             = number
     disk_size          = number
     storage            = string
-    snippet_storage    = string
     target_node        = string
     bridge             = string
     cloudinit_user     = string
