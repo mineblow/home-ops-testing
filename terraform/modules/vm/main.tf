@@ -71,7 +71,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
   }
 
   initialization {
-    datastore_id      = "snippets-store"
+    datastore_id      = "local-zfs"
 
     user_account {
       username = each.value.cloudinit_user
