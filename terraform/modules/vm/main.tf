@@ -1,6 +1,7 @@
 resource "tls_private_key" "vm" {
   for_each  = var.vm_config
-  algorithm = "ED25519"
+  algorithm = "RSA"
+  rsa_bits  = 4096
 }
 
 resource "vault_kv_secret_v2" "vm_ssh_key_private" {
