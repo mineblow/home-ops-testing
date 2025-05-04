@@ -121,7 +121,7 @@
 
 - name: Enable and start service
   systemd:
-    name: actions.runner.{{ github_owner }}-{{ github_repo | replace("-", "_") }}.bootstrap-runner.service
+    name: actions.runner.{{ github_owner }}-{{ github_repo }}.bootstrap-runner.service
     enabled: true
     state: started
   become: true
