@@ -46,6 +46,7 @@
   command: >
     vault kv get -field=value kv/home-ops/environment/homelab/{{ env_name }}/secrets/vm_ssh_key_public
   register: pubkey
+  delegate_to: localhost
   environment:
     VAULT_ADDR: "{{ vault_addr }}"
     VAULT_TOKEN: "{{ vault_token }}"
