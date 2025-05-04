@@ -1,4 +1,8 @@
 ---
+- name: Debug GitHub PAT
+  debug:
+    msg: "PAT is: {{ github_pat | default('MISSING') }}"
+
 - name: Get existing self-hosted runners
   uri:
     url: "https://api.github.com/repos/{{ github_owner }}/{{ github_repo }}/actions/runners"
