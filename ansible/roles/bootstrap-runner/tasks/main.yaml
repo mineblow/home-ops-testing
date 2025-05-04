@@ -16,12 +16,11 @@
 
 - name: Parse existing runner ID without json_query
   set_fact:
-    runner_id: >-
-      {{
-        (runners_json.runners | selectattr('name', 'equalto', 'bootstrap-runner') | list | first).id
-          if (runners_json.runners | selectattr('name', 'equalto', 'bootstrap-runner') | list | length > 0)
-          else omit
-      }}
+    runner_id: "{{ item.id }}"
+  when: item.name == 'bootstrap-runner'
+  loop: "{{ runners_json.runners }}"
+  loop_control:
+    label: "{{ item.name }}"
 
 - name: Delete existing runner if it exists
   uri:
