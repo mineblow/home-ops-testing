@@ -33,9 +33,7 @@ resource "proxmox_virtual_environment_file" "cloudinit" {
   datastore_id = "snippets-store"
   node_name    = each.value.target_node
 
-  source_file {
-    path = "${path.root}/../../../.proxmox/cloudinit/${local.derived_os_version[each.key]}.yaml"
-  }
+  content = local.base_cloudinit[each.key]
 }
 
 resource "proxmox_virtual_environment_vm" "vm" {
