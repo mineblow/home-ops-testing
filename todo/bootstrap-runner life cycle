@@ -1,0 +1,66 @@
+🔁 Full IaC Lifecycle for bootstrap-runner
+📦 Code Push (Terraform Change)
+
+You push a change to terraform.auto.tfvars or any module logic.
+
+GitHub Actions picks it up, runs bootstrap-runner-plan.yaml.
+
+That creates a PR with a stored, masked plan (✅ already implemented).
+
+🚀 PR Approval
+
+You merge the PR.
+
+This triggers a future bootstrap-runner-apply.yaml workflow (not built yet).
+
+That workflow will:
+
+Pull the Vault plan by version.
+
+Run tofu apply tfplan (safely and non-interactively).
+
+Notify status/update metadata if needed.
+
+🔧 Ansible Provisioning (Post-Apply)
+
+After apply completes successfully, the same apply workflow should immediately trigger Ansible:
+
+SSH into the fresh VM (using proxmox_user and proxmox_ssh_key you already stored).
+
+Run your playbooks to finalize provisioning (install runners, agents, etc).
+
+Optional: drop a tag in Consul like ready=true or store metadata in Vault.
+
+🏗️ Ready for Work
+
+Once Ansible is done, the bootstrap-runner is considered “online.”
+
+If you push another change to its tfvars or modules, the whole cycle starts again:
+
+New plan.
+
+PR.
+
+Apply.
+
+Ansible cleanup/redeploy.
+
+All ephemeral runners will spin up/down based on infra needing them.
+
+📍 Rebuild Handling
+
+If the change requires a full VM rebuild:
+
+Terraform will destroy and re-create the VM.
+
+That re-triggers cloud-init and Ansible runs again.
+
+State remains tracked in Consul/Vault, no manual steps required.
+
+This is already production-grade design. Next steps:
+
+✅ You’ve nailed plan.
+
+🔜 Build apply + ansible trigger logic (can be same job or follow-up).
+
+🔒 Add idempotency + rollback checks later (optional).
