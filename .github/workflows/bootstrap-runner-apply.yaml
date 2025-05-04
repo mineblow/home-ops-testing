@@ -243,7 +243,6 @@ jobs:
         
       - name: 🧪 Install Python deps for Ansible (system-wide)
         run: |
-          sudo python3 -m pip install --upgrade pip
           sudo python3 -m pip install jmespath
         
       - name: 🚀 Run Ansible to configure the VM
