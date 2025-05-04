@@ -14,7 +14,7 @@ locals {
 
   base_cloudinit = {
     for name, key in tls_private_key.vm :
-    name => templatefile("${path.module}/.cloudinit/${local.derived_os_version[name]}.yaml", {
+    name => templatefile("${path.module}/.cloud-init/${local.derived_os_version[name]}.yaml", {
       username = var.username,
       ssh_key  = trimspace(key.public_key_openssh)
     })
