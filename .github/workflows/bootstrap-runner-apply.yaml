@@ -244,6 +244,8 @@ jobs:
       - name: 🚀 Run Ansible to configure the VM
         env:
           ANSIBLE_CONFIG: ansible/ansible.cfg
+          GITHUB_PAT: ${{ env.GITHUB_PAT }}
+          RUNNER_TOKEN: ${{ env.RUNNER_TOKEN }} 
         run: |
           ansible-playbook -i "${VM_IP}," \
             -u ubuntu \
