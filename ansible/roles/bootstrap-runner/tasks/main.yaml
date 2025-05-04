@@ -28,7 +28,7 @@
     url: "https://api.github.com/repos/{{ github_owner }}/{{ github_repo }}/actions/runners/{{ runner_id }}"
     method: DELETE
     headers:
-      Authorization: "token {{ github_runner_token }}"
+      Authorization: "token {{ github_pat }}"
       Accept: "application/vnd.github+json"
     status_code: 204
   when: runner_id is defined
