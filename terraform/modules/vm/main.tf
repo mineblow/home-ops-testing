@@ -26,14 +26,16 @@ resource "vault_kv_secret_v2" "vm_ssh_key_public" {
   })
 }
 
-resource "proxmox_virtual_environment_file" "cloudinit" {
-  for_each = var.vm_config
-
+resource "proxmox_virtual_environment_file" "cloudinit_file" {
+  for_each     = var.vm_config
   content_type = "snippets"
   datastore_id = "snippets-store"
   node_name    = each.value.target_node
 
-  content = local.base_cloudinit[each.key]
+  source_raw {
+    data      = local.base_cloudinit[each.key]
+    file_name = "${each.key}-cloudinit.yaml"
+  }
 }
 
 resource "proxmox_virtual_environment_vm" "vm" {
