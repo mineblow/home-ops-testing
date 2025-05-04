@@ -26,6 +26,17 @@ resource "vault_kv_secret_v2" "vm_ssh_key_public" {
   })
 }
 
+resource "proxmox_virtual_environment_file" "cloudinit" {
+  for_each = var.vm_config
+
+  content_type = "snippets"
+  datastore_id = "snippets-store"
+  node_name    = each.value.target_node
+
+  source = "${path.root}/../../../.proxmox/cloudinit/${local.derived_os_version[each.key]}.yaml"
+  file_name   = "${each.key}.yaml"
+}
+
 resource "proxmox_virtual_environment_vm" "vm" {
   for_each = var.vm_config
 
@@ -72,15 +83,9 @@ resource "proxmox_virtual_environment_vm" "vm" {
   }
 
   initialization {
-    datastore_id = each.value.storage
+    datastore_id = "snippets-store"
 
-    ip_config {
-      ipv4 {
-        address = "dhcp"
-      }
-    }
-
-    user_data = local.base_cloudinit[each.key]
+    user_data_file_id = "snippets-store:snippets/${proxmox_virtual_environment_file.cloudinit[each.key].file_name}"
   }
 
   tags = local.augmented_tags[each.key]
@@ -92,8 +97,8 @@ module "metadata" {
   derived_os_version = local.derived_os_version
   notes              = { for name, cfg in var.vm_config : name => cfg.notes }
   vm_resources       = { for name, vm in proxmox_virtual_environment_vm.vm : name => {
-    role            = var.vm_config[name].role
-    vmid            = vm.vm_id
-    ipv4_addresses  = vm.ipv4_addresses
+    role           = var.vm_config[name].role
+    vmid           = vm.vm_id
+    ipv4_addresses = vm.ipv4_addresses
   } }
 }
