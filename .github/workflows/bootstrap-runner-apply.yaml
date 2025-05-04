@@ -241,9 +241,11 @@ jobs:
           echo "::add-mask::$TOKEN"
           echo "RUNNER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
         
-      - name: 🧪 Install Python deps for Ansible (system-wide)
+      - name: 🧪 Install jmespath for Ansible's interpreter
         run: |
-          sudo python3 -m pip install jmespath
+          PY_BIN=$(ansible -m setup localhost --connection=local | grep 'ansible_python_interpreter' | cut -d'"' -f4)
+          echo "🔍 Installing jmespath into: $PY_BIN"
+          "$PY_BIN" -m pip install --user jmespath
         
       - name: 🚀 Run Ansible to configure the VM
         env:
