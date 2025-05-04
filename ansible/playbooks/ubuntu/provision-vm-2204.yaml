@@ -14,7 +14,7 @@
 
     - name: Apply environment-specific role (e.g., bootstrap-runner)
       include_role:
-        name: "{{ env_name }}"
+        name: "ansible.roles.{{ env_name }}"
 
     - name: Apply hardening (Ubuntu-specific)
       include_role:
