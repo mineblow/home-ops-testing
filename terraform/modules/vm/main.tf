@@ -72,13 +72,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
   }
 
   initialization {
-    datastore_id      = "local-zfs"
-
-    user_account {
-      username = each.value.cloudinit_user
-      password = each.value.cloudinit_password
-      keys     = [tls_private_key.vm[each.key].public_key_openssh]
-    }
+    datastore_id = each.value.storage
 
     ip_config {
       ipv4 {
@@ -86,7 +80,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
       }
     }
 
-    user_data_file_id = "snippets-store:snippets/${local.derived_os_version[each.key]}.yaml"
+    user_data = local.base_cloudinit[each.key]
   }
 
   tags = local.augmented_tags[each.key]
