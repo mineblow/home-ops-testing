@@ -240,24 +240,12 @@ jobs:
           TOKEN=$(echo "$RESPONSE" | jq -r .token)
           echo "::add-mask::$TOKEN"
           echo "RUNNER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
-        
-      - name: 📦 Install jmespath in Ansible's Python
+          
+      - name: 📦 Force install jmespath for Ansible
         run: |
           set -euo pipefail
+          python3 -m pip install --user jmespath
       
-          PYTHON=$(ansible -i localhost, -m ansible.builtin.setup localhost \
-            --connection=local -a 'filter=ansible_python_interpreter' \
-            -o | awk -F'"' '/ansible_python_interpreter/ {print $4}')
-      
-          echo "Using Python: $PYTHON"
-      
-          "$PYTHON" -m pip install --user jmespath
-        
-    
-      - name: 🔧 Export Python user site path
-        run: |
-          echo "PYTHONPATH=$(python3 -m site --user-site)" >> "$GITHUB_ENV"
-            
       - name: 🚀 Run Ansible to configure the VM
         env:
           ANSIBLE_CONFIG: ansible/ansible.cfg
