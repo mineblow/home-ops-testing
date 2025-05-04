@@ -243,11 +243,13 @@ jobs:
 
       - name: 🚀 Run Ansible to configure the VM
         run: |
-          ansible-playbook -i "${VM_IP}," \
+          cd ansible
+          ANSIBLE_CONFIG=ansible.cfg \
+          ansible-playbook -i "$VM_IP," \
             -u ubuntu \
-            --private-key $ENV_PATH/proxmox_vm.key \
+            --private-key "$ENV_PATH/proxmox_vm.key" \
             --ssh-common-args "-o StrictHostKeyChecking=no" \
-            ansible/playbooks/provision-vm.yaml \
+            playbooks/provision-vm.yaml \
             --extra-vars "env_name=bootstrap-runner vault_addr=$VAULT_ADDR vault_token=$VAULT_TOKEN bootstrap_user=ubuntu github_runner_token=$RUNNER_TOKEN"
 
       - name: 🧼 Cleanup
