@@ -240,7 +240,10 @@ jobs:
           TOKEN=$(echo "$RESPONSE" | jq -r .token)
           echo "::add-mask::$TOKEN"
           echo "RUNNER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
-
+      - name: 🧪 Install Python deps for Ansible
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install jmespath        
       - name: 🚀 Run Ansible to configure the VM
         env:
           ANSIBLE_CONFIG: ansible/ansible.cfg
