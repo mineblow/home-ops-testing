@@ -86,7 +86,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
   initialization {
     datastore_id = "snippets-store"
 
-    user_data_file_id = "snippets-store:snippets/${proxmox_virtual_environment_file.cloudinit[each.key].id}"
+    user_data_file_id = proxmox_virtual_environment_file.cloudinit[each.key].id
   }
 
   tags = local.augmented_tags[each.key]
