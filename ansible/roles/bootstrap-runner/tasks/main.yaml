@@ -1,4 +1,35 @@
 ---
+- name: Get existing self-hosted runners
+  uri:
+    url: "https://api.github.com/repos/{{ github_owner }}/{{ github_repo }}/actions/runners"
+    headers:
+      Authorization: "token {{ github_runner_token }}"
+      Accept: "application/vnd.github+json"
+    return_content: true
+  register: runner_response
+  delegate_to: localhost
+
+- name: Parse existing runner ID (if any)
+  set_fact:
+    existing_runner_id: >-
+      {{ runner_response.json.runners | json_query("[?name=='bootstrap-runner'].id") | first | default(None) }}
+  delegate_to: localhost
+
+- name: Delete existing runner if it exists
+  uri:
+    url: "https://api.github.com/repos/{{ github_owner }}/{{ github_repo }}/actions/runners/{{ existing_runner_id }}"
+    method: DELETE
+    headers:
+      Authorization: "token {{ github_runner_token }}"
+      Accept: "application/vnd.github+json"
+    status_code: 204
+  when: existing_runner_id is not none
+  delegate_to: localhost
+
+# ─────────────────────────────────────────────
+# Everything below here is your original stuff
+# ─────────────────────────────────────────────
+
 - name: Ensure github-runner user exists
   user:
     name: github-runner
@@ -17,10 +48,9 @@
     group: root
     mode: '0440'
 
-
 - name: Allow Ansible to sudo to github-runner without password
   become: true
-  ansible.builtin.copy:
+  copy:
     dest: /etc/sudoers.d/github-runner
     content: "ubuntu ALL=(github-runner) NOPASSWD: ALL\n"
     owner: root
@@ -69,7 +99,7 @@
     sudo -H -u github-runner bash -c '
       cd /home/github-runner/actions-runner && \
       ./config.sh \
-        --url https://github.com/mineblow/home-ops-testing \
+        --url https://github.com/{{ github_owner }}/{{ github_repo }} \
         --token {{ github_runner_token }} \
         --name bootstrap-runner \
         --labels self-hosted,bootstrap-runner \
@@ -81,10 +111,9 @@
   shell: |
     sudo su - github-runner -c 'cd /home/github-runner/actions-runner && sudo ./svc.sh install'
 
-
 - name: Enable and start service
   systemd:
-    name: actions.runner.mineblow-home-ops-testing.bootstrap-runner.service
+    name: actions.runner.{{ github_owner }}-{{ github_repo | replace("-", "_") }}.bootstrap-runner.service
     enabled: true
     state: started
   become: true

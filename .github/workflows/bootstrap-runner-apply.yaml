@@ -249,9 +249,16 @@ jobs:
             -u ubuntu \
             --private-key $ENV_PATH/proxmox_vm.key \
             --ssh-common-args "-o StrictHostKeyChecking=no" \
-            -e "env_name=bootstrap-runner vault_addr=$VAULT_ADDR vault_token=$VAULT_TOKEN bootstrap_user=ubuntu github_runner_token=$RUNNER_TOKEN" \
-            ansible/playbooks/provision-vm.yaml
-        
+            -e "env_name=bootstrap-runner \
+                vault_addr=$VAULT_ADDR \
+                vault_token=$VAULT_TOKEN \
+                bootstrap_user=ubuntu \
+                github_runner_token=$RUNNER_TOKEN \
+                github_owner=mineblow \
+                github_repo=home-ops-testing \
+                github_pat=$GITHUB_PAT" \
+            ansible/playbooks/provision-vm.yaml        
+
       - name: 🧼 Cleanup
         if: always()
         run: |
