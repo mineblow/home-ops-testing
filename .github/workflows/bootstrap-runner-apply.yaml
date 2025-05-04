@@ -129,20 +129,26 @@ jobs:
           ENV_PATH: ${{ env.ENV_PATH }}
           PLAN_PATH: ${{ env.PLAN_PATH }}
 
-      # - name: 🔐 Pull Proxmox SSH Key from Vault
-      #   run: |
-      #     set -euo pipefail
-      #     echo "🔑 Fetching Proxmox SSH key"
-      #     PROXMOX_SSH_KEY=$(vault kv get -field=value kv/home-ops/environment/homelab/$ENV_NAME/secrets/proxmox_ssh_key)
-      #     echo "$PROXMOX_SSH_KEY" > "$ENV_PATH/proxmox.key"
-      #     chmod 600 "$ENV_PATH/proxmox.key"
-      
-      #     # ✅ Write temp tfvars so the provider can read the key path
-      #     echo "proxmox_ssh_private_key = \"proxmox.key\"" > "$ENV_PATH/vault.auto.tfvars"
-      #   env:
-      #     VAULT_ADDR: ${{ env.VAULT_ADDR }}
-      #     VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+      - name: 🔐 Pull Proxmox SSH creds from Vault
+        run: |
+          set -euo pipefail
 
+          echo "🔑 Fetching Proxmox SSH user"
+          PROXMOX_USER=$(vault kv get -field=value kv/home-ops/global/proxmox/proxmox_ssh_user)
+          echo "::add-mask::$PROXMOX_USER"
+          echo "proxmox_ssh_user = \"$PROXMOX_USER\"" >> "$ENV_PATH/vault.auto.tfvars"
+
+          echo "🔑 Fetching Proxmox SSH private key"
+          PROXMOX_SSH_KEY=$(vault kv get -field=value kv/home-ops/environment/homelab/$ENV_NAME/secrets/proxmox_ssh_key_private)
+          echo "$PROXMOX_SSH_KEY" | while read -r line; do echo "::add-mask::$line"; done
+          echo "$PROXMOX_SSH_KEY" > "$ENV_PATH/proxmox.key"
+          chmod 600 "$ENV_PATH/proxmox.key"
+
+          echo "proxmox_ssh_private_key = \"proxmox.key\"" >> "$ENV_PATH/vault.auto.tfvars"
+        env:
+          VAULT_ADDR: ${{ env.VAULT_ADDR }}
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+          
       - name: ✅ Apply tfplan
         run: |
           set -euo pipefail
