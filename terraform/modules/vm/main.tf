@@ -26,7 +26,7 @@ resource "vault_kv_secret_v2" "vm_ssh_key_public" {
   })
 }
 
-resource "proxmox_virtual_environment_file" "cloudinit_file" {
+resource "proxmox_virtual_environment_file" "cloudinit" {
   for_each     = var.vm_config
   content_type = "snippets"
   datastore_id = "snippets-store"
