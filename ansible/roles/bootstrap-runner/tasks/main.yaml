@@ -1,8 +1,4 @@
 ---
-- name: Debug GitHub PAT
-  debug:
-    msg: "PAT is: {{ github_pat | default('MISSING') }}"
-
 - name: Get existing self-hosted runners
   uri:
     url: "https://api.github.com/repos/{{ github_owner }}/{{ github_repo }}/actions/runners"
@@ -10,14 +6,22 @@
     headers:
       Authorization: "token {{ github_pat }}"
       Accept: "application/vnd.github+json"
-    return_content: true
+    return_content: yes
   delegate_to: localhost
-  register: runners_response
+  register: runners_api_response
+
+- name: Set fact for runners JSON
+  set_fact:
+    runners_json: "{{ runners_api_response.json }}"
 
 - name: Parse existing runner ID without json_query
   set_fact:
-    runner_id: "{{ (runners_json.runners | selectattr('name', 'equalto', 'bootstrap-runner') | list)[0].id | default(omit) }}"
-  delegate_to: localhost
+    runner_id: >-
+      {{
+        (runners_json.runners | selectattr('name', 'equalto', 'bootstrap-runner') | list | first).id
+          if (runners_json.runners | selectattr('name', 'equalto', 'bootstrap-runner') | list | length > 0)
+          else omit
+      }}
 
 - name: Delete existing runner if it exists
   uri:
