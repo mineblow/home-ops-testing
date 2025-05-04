@@ -1,24 +1,32 @@
 ---
-- name: Check if hardened-admin exists
+- name: Check if admin exists
   ansible.builtin.getent:
     database: passwd
-    key: hardened-admin
+    key: admin
   register: hardened_user_check
   ignore_errors: true
 
-- name: Generate random password for hardened-admin
+- name: Generate random password for admin
   set_fact:
     hardened_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
   when: hardened_user_check.failed or hardened_user_check is skipped
 
-- name: Hash password for hardened-admin
+- name: Ensure passlib is installed
+  ansible.builtin.apt:
+    name: python3-passlib
+    state: present
+    update_cache: yes
+  become: true
+  when: hardened_user_check.failed or hardened_user_check is skipped
+
+- name: Hash password for admin
   set_fact:
     hardened_password_hashed: "{{ hardened_password | password_hash('sha512') }}"
   when: hardened_user_check.failed or hardened_user_check is skipped
 
-- name: Create hardened-admin user
+- name: Create admin user
   user:
-    name: hardened-admin
+    name: admin
     password: "{{ hardened_password_hashed }}"
     shell: /bin/bash
     groups: sudo
@@ -26,13 +34,13 @@
     state: present
   when: hardened_user_check.failed or hardened_user_check is skipped
 
-- name: Create .ssh directory for hardened-admin
+- name: Create .ssh directory for admin
   file:
-    path: /home/hardened-admin/.ssh
+    path: /home/admin/.ssh
     state: directory
     mode: '0700'
-    owner: hardened-admin
-    group: hardened-admin
+    owner: admin
+    group: admin
   when: hardened_user_check.failed or hardened_user_check is skipped
 
 - name: Fetch SSH public key from Vault
@@ -46,26 +54,26 @@
   no_log: true
   when: hardened_user_check.failed or hardened_user_check is skipped
 
-- name: Install authorized_keys for hardened-admin
+- name: Install authorized_keys for admin
   copy:
     content: "{{ pubkey.stdout }}"
-    dest: /home/hardened-admin/.ssh/authorized_keys
-    owner: hardened-admin
-    group: hardened-admin
+    dest: /home/admin/.ssh/authorized_keys
+    owner: admin
+    group: admin
     mode: '0600'
   when: hardened_user_check.failed or hardened_user_check is skipped
 
-- name: Grant hardened-admin NOPASSWD sudo
+- name: Grant admin NOPASSWD sudo
   copy:
-    dest: /etc/sudoers.d/hardened-admin
-    content: "hardened-admin ALL=(ALL) NOPASSWD:ALL\n"
+    dest: /etc/sudoers.d/admin
+    content: "admin ALL=(ALL) NOPASSWD:ALL\n"
     mode: '0440'
   when: hardened_user_check.failed or hardened_user_check is skipped
 
-- name: Push hardened-admin credentials to Vault
+- name: Push admin credentials to Vault
   command: >
     vault kv put kv/home-ops/environment/homelab/{{ env_name }}/secrets/hardened_ssh_creds
-    username="hardened-admin" password="{{ hardened_password }}"
+    username="admin" password="{{ hardened_password }}"
   environment:
     VAULT_ADDR: "{{ vault_addr }}"
     VAULT_TOKEN: "{{ vault_token }}"
