@@ -14,10 +14,9 @@
   delegate_to: localhost
   register: runners_response
 
-- name: Parse existing runner ID (if any)
+- name: Parse existing runner ID without json_query
   set_fact:
-    existing_runner_id: >-
-      {{ runner_response.json.runners | json_query("[?name=='bootstrap-runner'].id") | first | default(None) }}
+    runner_id: "{{ (runners_json.runners | selectattr('name', 'equalto', 'bootstrap-runner') | list)[0].id | default(omit) }}"
   delegate_to: localhost
 
 - name: Delete existing runner if it exists

@@ -240,12 +240,7 @@ jobs:
           TOKEN=$(echo "$RESPONSE" | jq -r .token)
           echo "::add-mask::$TOKEN"
           echo "RUNNER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
-          
-      - name: 📦 Force install jmespath for Ansible
-        run: |
-          set -euo pipefail
-          python3 -m pip install --user jmespath
-      
+     
       - name: 🚀 Run Ansible to configure the VM
         env:
           ANSIBLE_CONFIG: ansible/ansible.cfg
