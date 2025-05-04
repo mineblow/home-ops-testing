@@ -2,12 +2,13 @@
 - name: Get existing self-hosted runners
   uri:
     url: "https://api.github.com/repos/{{ github_owner }}/{{ github_repo }}/actions/runners"
+    method: GET
     headers:
-      Authorization: "token {{ github_runner_token }}"
+      Authorization: "token {{ github_pat }}"
       Accept: "application/vnd.github+json"
     return_content: true
-  register: runner_response
   delegate_to: localhost
+  register: runners_response
 
 - name: Parse existing runner ID (if any)
   set_fact:
