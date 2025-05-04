@@ -241,14 +241,18 @@ jobs:
           echo "::add-mask::$TOKEN"
           echo "RUNNER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
         
-      - name: 🔧 Install jmespath inside Ansible’s Python
+      - name: 📦 Install jmespath in Ansible's Python
         run: |
+          set -euo pipefail
+      
           PYTHON=$(ansible -i localhost, -m ansible.builtin.setup localhost \
             --connection=local -a 'filter=ansible_python_interpreter' \
-            -o | grep ansible_python_interpreter | cut -d'"' -f4)
+            -o | awk -F'"' '/ansible_python_interpreter/ {print $4}')
       
           echo "Using Python: $PYTHON"
+      
           "$PYTHON" -m pip install --user jmespath
+        
     
       - name: 🔧 Export Python user site path
         run: |
