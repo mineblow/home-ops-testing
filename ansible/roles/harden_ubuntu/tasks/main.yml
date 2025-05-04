@@ -11,18 +11,17 @@
     hardened_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
   when: hardened_user_check.failed or hardened_user_check is skipped
 
-- name: Ensure passlib is installed
-  ansible.builtin.apt:
-    name: python3-passlib
-    state: present
-    update_cache: yes
-  become: true
-  when: hardened_user_check.failed or hardened_user_check is skipped
+- name: Hash password for admin (via openssl to avoid passlib timing issue)
+  delegate_to: localhost
+  become: false
+  shell: |
+    echo -n '{{ hardened_password }}' | openssl passwd -6 -stdin
+  register: hash_result
+  changed_when: false
 
-- name: Hash password for admin
+- name: Set hashed password fact
   set_fact:
-    hardened_password_hashed: "{{ hardened_password | password_hash('sha512') }}"
-  when: hardened_user_check.failed or hardened_user_check is skipped
+    hardened_password_hashed: "{{ hash_result.stdout }}"
 
 - name: Create admin user
   user:
