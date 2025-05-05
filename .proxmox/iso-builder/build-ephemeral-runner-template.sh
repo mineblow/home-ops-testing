@@ -16,6 +16,7 @@ TODAY=$(date +%Y-%m-%d)
 VMNAME="${TEMPLATE_PREFIX}-${TODAY}"
 META_OUT="/var/lib/vz/template/ephemeral-runner.meta.json"
 RUNNER_IMAGE_SOURCE="/opt/github-runner-image"
+CLOUDINIT_SNIPPET="/var/lib/vz/snippets/cloudinit-ephemeral.yaml"
 
 # ─────────────────────────────────────────
 # 🔒 PRECHECKS
@@ -39,11 +40,11 @@ fi
 # ─────────────────────────────────────────
 # 📥 ISO DOWNLOAD
 # ─────────────────────────────────────────
-echo "📥 Downloading latest ISO..."
+echo "📥 Downloading ISO..."
 curl -fLo "$ISO_PATH" "$ISO_URL"
 
 # ─────────────────────────────────────────
-# 🔢 DYNAMIC VMID ALLOCATION + OLDEST RECLAIM
+# 🔢 FIND OR RECLAIM VMID
 # ─────────────────────────────────────────
 echo "🎲 Finding available VMID..."
 VMID=""
@@ -57,18 +58,14 @@ done
 if [[ -z "$VMID" ]]; then
   echo "♻️ No free VMID, reclaiming oldest..."
   OLDEST_VMID=$(qm list | awk '$2 ~ /^'"$TEMPLATE_PREFIX"'/ { print $1","$2 }' | sort -t, -k2 | head -n1 | cut -d, -f1)
-  if [[ -n "$OLDEST_VMID" ]]; then
-    echo "🔥 Reclaiming VMID $OLDEST_VMID"
-    qm destroy "$OLDEST_VMID" --purge
-    VMID="$OLDEST_VMID"
-  else
-    echo "❌ No reclaimable template found."
-    exit 1
-  fi
+  [[ -n "$OLDEST_VMID" ]] || { echo "❌ No free/reclaimable VMIDs"; exit 1; }
+  echo "🔥 Destroying VMID $OLDEST_VMID"
+  qm destroy "$OLDEST_VMID" --purge
+  VMID="$OLDEST_VMID"
 fi
 
 # ─────────────────────────────────────────
-# 🧱 CREATE BASE VM
+# 🧱 CREATE VM + DISK
 # ─────────────────────────────────────────
 echo "🧱 Creating VM $VMID..."
 qm create "$VMID" \
@@ -93,48 +90,26 @@ qm importdisk "$VMID" "$ISO_PATH" "$STORAGE_POOL" --format raw
 qm set "$VMID" \
   --$CI_DISK "$STORAGE_POOL:vm-${VMID}-disk-0,cache=writeback" \
   --ide2 "$STORAGE_POOL:cloudinit" \
+  --ipconfig0 ip=dhcp \
   --ciuser ubuntu \
-  --cipassword changeme \
-  --ipconfig0 ip=dhcp
+  --cipassword changeme
 
 # ─────────────────────────────────────────
-# 🔧 INSTALL GITHUB TOOLCHAIN IN ROOTFS
+# 🛠️ INSTALL TOOLING VIA BOOT
 # ─────────────────────────────────────────
-echo "🔧 Injecting GitHub runner toolchain..."
-
-DISK_PATH="/dev/zvol/${STORAGE_POOL}/vm-${VMID}-disk-0"
-MOUNT_DIR="/mnt/vm-${VMID}"
-mkdir -p "$MOUNT_DIR"
-
-zfs set mountpoint="$MOUNT_DIR" "${STORAGE_POOL}/vm-${VMID}-disk-0"
-mount "$DISK_PATH" "$MOUNT_DIR"
-
-mount --bind /dev "$MOUNT_DIR/dev"
-mount --bind /proc "$MOUNT_DIR/proc"
-mount --bind /sys "$MOUNT_DIR/sys"
-
-cp -r "$RUNNER_IMAGE_SOURCE" "$MOUNT_DIR/opt/github-runner-image"
-
-chroot "$MOUNT_DIR" bash -c "
-  cd /opt/github-runner-image/images/linux/ubuntu2204
-  chmod +x ./main.sh
-  ./main.sh
-"
-
-rm -rf "$MOUNT_DIR/opt/github-runner-image"
-umount -lf "$MOUNT_DIR/dev"
-umount -lf "$MOUNT_DIR/proc"
-umount -lf "$MOUNT_DIR/sys"
-umount -lf "$MOUNT_DIR"
-rmdir "$MOUNT_DIR"
-
-echo "✅ GitHub runner image baked into rootfs"
+qm start "$VMID"
+echo "⏳ Waiting for VM to boot (30s)..."
+sleep 30
+echo "⚙️ Installing GitHub runner + qemu-agent..."
+qm guest exec "$VMID" -- bash -c "sudo apt update && sudo apt install -y qemu-guest-agent"
+qm guest exec "$VMID" -- bash -c "cd /tmp && git clone https://github.com/actions/runner-images.git"
+qm guest exec "$VMID" -- bash -c "cd /tmp/runner-images/images/linux/ubuntu2204 && chmod +x ./main.sh && sudo ./main.sh"
+qm shutdown "$VMID"
 
 # ─────────────────────────────────────────
-# 📁 INJECT CLOUD-INIT FIRSTBOOT + CONFIG
+# 🧹 CLEANUP + CLOUD-INIT
 # ─────────────────────────────────────────
-CLOUDINIT_SNIPPET="/var/lib/vz/snippets/cloudinit-ephemeral.yaml"
-mkdir -p "$(dirname "$CLOUDINIT_SNIPPET")"
+qm set "$VMID" --delete local-zfs:snippets/cloudinit-ephemeral.yaml || true
 cat <<EOF > "$CLOUDINIT_SNIPPET"
 #cloud-config
 write_files:
@@ -142,7 +117,7 @@ write_files:
     permissions: '0755'
     content: |
       #!/bin/bash
-      echo "[firstboot] Starting GitHub runner registration..."
+      echo "[firstboot] Registering GitHub runner..."
 
       export VAULT_ADDR="http://vault.service.consul:8200"
       export VAULT_TOKEN=\$(cat /etc/vault.token)
@@ -164,7 +139,7 @@ EOF
 qm set "$VMID" --cicustom "user=snippets/cloudinit-ephemeral.yaml"
 
 # ─────────────────────────────────────────
-# 🪄 FINALIZE TEMPLATE
+# 🧱 CONVERT TO TEMPLATE
 # ─────────────────────────────────────────
 qm set "$VMID" --autostart off
 qm template "$VMID"
