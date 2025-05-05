@@ -16,6 +16,6 @@
       include_role:
         name: "{{ env_name }}"
 
-    - name: Apply hardening (Ubuntu-specific)
-      include_role:
-        name: harden_ubuntu
+    # - name: Apply hardening (Ubuntu-specific)
+    #   include_role:
+    #     name: harden_ubuntu
