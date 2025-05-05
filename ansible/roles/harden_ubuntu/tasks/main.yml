@@ -74,6 +74,7 @@
   command: >
     vault kv put kv/home-ops/environment/homelab/{{ env_name }}/secrets/hardened_ssh_creds
     username="admin" password="{{ hardened_password }}"
+  delegate_to: localhost
   environment:
     VAULT_ADDR: "{{ vault_addr }}"
     VAULT_TOKEN: "{{ vault_token }}"
