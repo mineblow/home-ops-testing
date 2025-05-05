@@ -120,11 +120,6 @@ jobs:
             "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN" \
             "sudo -n chmod +x /home/$PROXMOX_SSH_USER/scripts/${SCRIPT_NAME}"
       
-          echo "📥 Uploading cloud-init YAML file..."
-          scp -i proxmox.key -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-            ".proxmox/.cloud-init/${CLOUDINIT_FILE}" \
-            "$PROXMOX_SSH_USER@$PROXMOX_DOMAIN:/var/lib/vz/snippets/${CLOUDINIT_FILE}"          
-
       - name: 🚀 Execute and delete script on Proxmox host
         run: |
           set -euo pipefail
