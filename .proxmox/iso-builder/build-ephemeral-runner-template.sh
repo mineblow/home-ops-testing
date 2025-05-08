@@ -1,9 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# ─────────────────────────────────────────
-# ⚙️ CONFIGURATION
-# ─────────────────────────────────────────
+# ─── CONFIG ─────────────────────────────────────────────────────────────
 VMID_START=9100
 VMID_END=9110
 TEMPLATE_PREFIX="ephemeral-runner-template"
@@ -12,11 +10,9 @@ ISO_NAME="ubuntu-22.04-ephemeral-cloudimg-amd64.img"
 ISO_PATH="/var/lib/vz/template/iso/${ISO_NAME}"
 STORAGE_POOL="local-zfs"
 CI_DISK="scsi0"
-TODAY=$(date +%Y-%m-%d)
-VMNAME="${TEMPLATE_PREFIX}-${TODAY}"
-META_OUT="/var/lib/vz/template/ephemeral-runner.meta.json"
-RUNNER_IMAGE_SOURCE="/opt/github-runner-image"
 CLOUDINIT_SNIPPET="/var/lib/vz/snippets/cloudinit-ephemeral.yaml"
+META_OUT="/var/lib/vz/template/ephemeral-runner.meta.json"
+VMNAME="${TEMPLATE_PREFIX}-$(date +%Y-%m-%d)"
 
 # ─────────────────────────────────────────
 # 🔒 PRECHECKS
@@ -54,7 +50,6 @@ for ((i=VMID_START; i<=VMID_END; i++)); do
     break
   fi
 done
-
 if [[ -z "$VMID" ]]; then
   echo "♻️ No free VMID, reclaiming oldest..."
   OLDEST_VMID=$(qm list | awk '$2 ~ /^'"$TEMPLATE_PREFIX"'/ { print $1","$2 }' | sort -t, -k2 | head -n1 | cut -d, -f1)
@@ -82,9 +77,6 @@ qm create "$VMID" \
   --serial0 socket \
   --vga serial0
 
-# ─────────────────────────────────────────
-# 💽 IMPORT DISK
-# ─────────────────────────────────────────
 echo "💽 Importing disk..."
 qm importdisk "$VMID" "$ISO_PATH" "$STORAGE_POOL" --format raw
 qm set "$VMID" \
@@ -94,22 +86,24 @@ qm set "$VMID" \
   --ciuser ubuntu \
   --cipassword changeme
 
-# ─────────────────────────────────────────
-# 🛠️ INSTALL TOOLING VIA BOOT
-# ─────────────────────────────────────────
+# ─── BOOT + INSTALL ─────────────────────────────────────────────────────
 qm start "$VMID"
-echo "⏳ Waiting for VM to boot (30s)..."
-sleep 30
-echo "⚙️ Installing GitHub runner + qemu-agent..."
-qm guest exec "$VMID" -- bash -c "sudo apt update && sudo apt install -y qemu-guest-agent"
-qm guest exec "$VMID" -- bash -c "cd /tmp && git clone https://github.com/actions/runner-images.git"
-qm guest exec "$VMID" -- bash -c "cd /tmp/runner-images/images/linux/ubuntu2204 && chmod +x ./main.sh && sudo ./main.sh"
-qm shutdown "$VMID"
+echo "⏳ Waiting for VM to boot (45s)..."
+sleep 45
 
-# ─────────────────────────────────────────
-# 🧹 CLEANUP + CLOUD-INIT
-# ─────────────────────────────────────────
-qm set "$VMID" --delete local-zfs:snippets/cloudinit-ephemeral.yaml || true
+echo "⚙️ Installing deps + GitHub runner..."
+qm guest exec "$VMID" -- bash -c "apt update && apt install -y qemu-guest-agent curl unzip git"
+qm guest exec "$VMID" -- bash -c "
+cd /opt && curl -LO https://github.com/actions/runner/releases/download/v2.316.0/actions-runner-linux-x64-2.316.0.tar.gz && \
+mkdir -p actions-runner && tar -xf actions-runner-linux-x64-2.316.0.tar.gz -C actions-runner && rm actions-runner-linux-x64-2.316.0.tar.gz
+"
+
+qm guest exec "$VMID" -- bash -c "cloud-init clean"
+qm shutdown "$VMID"
+sleep 10
+
+# ─── CLOUDINIT FOR REGISTRATION ─────────────────────────────────────────
+echo "📄 Writing cloud-init firstboot..."
 cat <<EOF > "$CLOUDINIT_SNIPPET"
 #cloud-config
 write_files:
@@ -118,18 +112,12 @@ write_files:
     content: |
       #!/bin/bash
       echo "[firstboot] Registering GitHub runner..."
-
       export VAULT_ADDR="http://vault.service.consul:8200"
       export VAULT_TOKEN=\$(cat /etc/vault.token)
       VAULT_PATH=\$(awk -F= '/^path=/{print \$2}' /etc/vault_path.cfg)
       RUNNER_TOKEN=\$(vault kv get -field=runner_token "\$VAULT_PATH")
-
       cd /opt/actions-runner
-      ./config.sh --url https://github.com/YOUR_ORG \
-                  --token "\$RUNNER_TOKEN" \
-                  --name "\$(hostname)" \
-                  --labels ephemeral \
-                  --unattended
+      ./config.sh --url https://github.com/YOUR_ORG --token \$RUNNER_TOKEN --name \$(hostname) --labels ephemeral --unattended
       ./svc.sh install
       ./svc.sh start
 runcmd:
@@ -138,31 +126,26 @@ EOF
 
 qm set "$VMID" --cicustom "user=snippets/cloudinit-ephemeral.yaml"
 
-# ─────────────────────────────────────────
-# 🧱 CONVERT TO TEMPLATE
-# ─────────────────────────────────────────
+# ─── FINALIZE TEMPLATE ──────────────────────────────────────────────────
+echo "📦 Finalizing template..."
 qm set "$VMID" --autostart off
 qm template "$VMID"
 qm set "$VMID" --tags "cloudinit,ephemeral,runner-template"
 
-# ─────────────────────────────────────────
-# 🧾 BUILD METADATA
-# ─────────────────────────────────────────
-echo "🧾 Building metadata..."
+# ─── METADATA ───────────────────────────────────────────────────────────
+echo "🧾 Writing metadata..."
 ISO_HASH=$(sha256sum "$ISO_PATH" | awk '{print $1}')
-SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
-SCRIPT_HASH=$(sha256sum "$SCRIPT_PATH" | awk '{print $1}')
+SCRIPT_HASH=$(sha256sum "$0" | awk '{print $1}')
 CENTRAL_TIMESTAMP=$(TZ="America/Chicago" date '+%Y-%m-%dT%H:%M:%S%z')
-
 cat <<EOF > "$META_OUT"
 {
-  "iso_hash": "${ISO_HASH}",
-  "script_hash": "${SCRIPT_HASH}",
-  "template_id": "${VMID}",
-  "timestamp": "${CENTRAL_TIMESTAMP}",
+  "iso_hash": "$ISO_HASH",
+  "script_hash": "$SCRIPT_HASH",
+  "template_id": "$VMID",
+  "timestamp": "$CENTRAL_TIMESTAMP",
   "os_version": "ubuntu-22.04",
-  "template_name": "${VMNAME}"
+  "template_name": "$VMNAME"
 }
 EOF
 
-echo "📦 Metadata saved to: $META_OUT"
+echo "✅ Runner template built: $VMNAME (VMID $VMID)"
